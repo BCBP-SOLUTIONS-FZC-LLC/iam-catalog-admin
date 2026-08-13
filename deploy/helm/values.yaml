@@ -1,0 +1,165 @@
+# Default values for iam-catalog-admin.
+# Ported from iam-user-profile's deploy/helm chart, pruned to what this
+# service actually needs (LLD §15/§16): no outbox/SNS/SQS/S3/Glue, no
+# RLS/GUC, no reconciler CronJob, no per-tenant state. Runs in the `iam`
+# namespace at 2 replicas per the LLD's own "sufficient for MVP load"
+# judgment (§16.1, tracked as CAT-Q5).
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/bcbp-solutions-fzc-llc/iam-catalog-admin
+  pullPolicy: IfNotPresent
+  # Overridden by CI to the release tag; falls back to Chart.AppVersion.
+  tag: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  # No IRSA role needed — this service has no AWS SDK dependency (no S3,
+  # SNS, SQS, or Glue; LLD §15's "no third-party credential to rotate").
+
+service:
+  type: ClusterIP
+  port: 8081
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Plaintext env vars (ConfigMap-equivalent — no secret material).
+env:
+  APP_ENV: prod
+  APP_PORT: "8081"
+  APP_NAME: catalog-admin-config
+  PG_SSLMODE: require
+  PG_MAX_CONNS: "10" # LLD §15 — "sized for a read-heavy, write-rare workload"
+  PG_MIN_CONNS: "0"
+  PG_BOUNCER_MODE: "true"
+  PG_SLOW_QUERY_THRESHOLD: 200ms
+  PG_STATEMENT_TIMEOUT: 5s
+  OTEL_SERVICE_NAME: catalog-admin-config
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+
+# Secret-backed env vars (rendered into a Secret unless existingSecret is
+# set). LLD §15: "no third-party credential to rotate... managed via the
+# platform's existing External Secrets Operator convention" — this chart's
+# Secret template is the fallback for environments not yet wired to ESO.
+envFromSecret:
+  - DATABASE_URL
+  - MIGRATION_DATABASE_URL
+  - VALKEY_URL
+
+# Set to an externally-managed Secret name (e.g. one populated by External
+# Secrets Operator) to skip rendering deploy/helm/templates/secret.yaml.
+existingSecret: ""
+
+# Bump to force pods to pick up a rotated existingSecret (Deployments don't
+# restart on Secret content changes alone).
+rotationEpoch: "0"
+
+# Only used when existingSecret is unset — the Secret template fails the
+# render if any envFromSecret key has no value here.
+secretValues:
+  DATABASE_URL: ""
+  MIGRATION_DATABASE_URL: ""
+  VALKEY_URL: ""
+
+# 30s HTTP drain (main.go's shutdown timeout) + 15s buffer. No outbox/SQS
+# consumer to drain — this service has neither (LLD §10, CAT-EVT-1/2).
+terminationGracePeriodSeconds: 45
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+startupProbe:
+  path: /healthz
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 24 # 120s budget for migrations + pool warm-up
+  timeoutSeconds: 3
+
+livenessProbe:
+  path: /healthz
+  periodSeconds: 15
+  failureThreshold: 3
+  timeoutSeconds: 3
+
+readinessProbe:
+  path: /readyz
+  periodSeconds: 10
+  failureThreshold: 3
+  timeoutSeconds: 3
+
+networkPolicy:
+  enabled: true
+  ingressControllerNamespaceSelector:
+    kubernetes.io/metadata.name: envoy-gateway-system
+  ingressControllerPodSelector: {}
+  metricsIngress:
+    enabled: true
+    namespaceSelector:
+      kubernetes.io/metadata.name: monitoring
+    podSelector:
+      app.kubernetes.io/name: prometheus
+  additionalIngressRules: []
+  additionalEgressRules: []
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  additionalLabels: {}
+  relabelings: []
+  namespaceSelector: {}
+
+# CAT-6/CAT-7 (GET /api/v1/departments[/:id]) are read by authenticated
+# tenant callers, not only platform_operator tooling (LLD §16.1) — enable
+# this when those routes need to be reachable through the gateway.
+# platform_operator (/api/v1/operator/*) and iam-system (/api/v1/internal/*)
+# routes should stay mesh-only regardless.
+ingress:
+  enabled: false
+  type: HTTPRoute # or "Ingress"
+  hosts:
+    - host: iam-catalog-admin.example.com
+      paths:
+        - path: /api/v1/departments
+          pathType: PathPrefix
+  gateway:
+    name: ""
+    namespace: ""
+    sectionName: ""
+  securityPolicy:
+    enabled: false
+    cors:
+      enabled: false
+      allowOrigins: []
+      allowMethods:
+        - GET
+        - OPTIONS
+      allowHeaders:
+        - Authorization
+        - Content-Type
+        - X-Tenant-ID
+        - X-User-ID
+      maxAge: "86400"
+    rateLimit:
+      enabled: false
+      requestsPerUnit: 1000
+      unit: Second
+  className: ""
+  annotations: {}
+  tls: []

@@ -1,0 +1,16 @@
+# Default: every file requires review from the IAM team.
+* @BCBP-SOLUTIONS-FZC-LLC/iam-team
+
+# Workflow and release automation changes require explicit sign-off.
+.github/workflows/ @BCBP-SOLUTIONS-FZC-LLC/iam-team
+.github/dependabot.yml @BCBP-SOLUTIONS-FZC-LLC/iam-team
+
+# Domain model — entities, value objects, domain errors.
+# Structural changes here ripple through every layer.
+internal/core/domain/ @BCBP-SOLUTIONS-FZC-LLC/iam-team
+
+# Database migrations affect all replicas and are irreversible in production.
+internal/adapter/outbound/postgres/migrations/ @BCBP-SOLUTIONS-FZC-LLC/iam-team @BCBP-SOLUTIONS-FZC-LLC/platform-team
+
+# Helm chart — deployment configuration changes require infra awareness.
+deploy/ @BCBP-SOLUTIONS-FZC-LLC/iam-team @BCBP-SOLUTIONS-FZC-LLC/platform-team

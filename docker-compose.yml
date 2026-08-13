@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: catalog_admin_app
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: catalog_admin
+    ports:
+      - "5535:5432"
+    volumes:
+      - catalog_admin_pg:/var/lib/postgresql/data
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6381:6379"
+
+volumes:
+  catalog_admin_pg:

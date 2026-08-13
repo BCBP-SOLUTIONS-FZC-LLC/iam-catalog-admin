@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "iam-catalog-admin.fullname" . }}
+  labels:
+    {{- include "iam-catalog-admin.labels" . | nindent 4 }}
+spec:
+  # At least 1 pod must remain available during voluntary disruptions (node
+  # drains, rolling updates). With replicaCount: 2 (LLD §16.1) this allows
+  # one pod to be evicted at a time without taking the service to zero.
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "iam-catalog-admin.selectorLabels" . | nindent 6 }}
+{{- end }}

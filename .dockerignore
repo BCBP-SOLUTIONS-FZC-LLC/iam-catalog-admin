@@ -1,0 +1,36 @@
+# Version control
+.git
+.gitignore
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+*.env
+
+# Development tooling and docs
+docs/
+deploy/
+scripts/
+*.md
+ARCHITECTURE.md
+README.md
+
+# Test artefacts
+test/
+coverage.out
+coverage.html
+*.coverprofile
+.coverage/
+
+# Build artefacts already compiled outside Docker
+bin/
+
+# IDE and OS noise
+.idea/
+.vscode/
+*.DS_Store
+*.swp
+*.swo
+
+# Go tool cache (not needed in image)
+vendor/

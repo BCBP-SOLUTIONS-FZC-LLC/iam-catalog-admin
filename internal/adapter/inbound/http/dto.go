@@ -1,0 +1,99 @@
+package http
+
+// ── Error envelope (mirrors iam-org-membership's dto.go / LLD-inherited §17 shape) ──
+
+// ErrorResponse is the flat JSON error envelope shared with every other
+// IAM service so clients parse one shape platform-wide.
+type ErrorResponse struct {
+	Error     string            `json:"error" example:"not_found"`
+	Status    int               `json:"status" example:"404"`
+	TraceID   string            `json:"trace_id,omitempty"`
+	RequestID string            `json:"request_id,omitempty"`
+	Code      string            `json:"code" example:"not_found"`
+	Message   string            `json:"message" example:"resource not found"`
+	Details   []ValidationError `json:"details,omitempty"`
+}
+
+// ValidationError is a per-field violation, populated on 422s that carry
+// structured field-level detail.
+type ValidationError struct {
+	Field   string `json:"field"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// ── Departments (CAT-1, CAT-2, CAT-6, CAT-7) ─────────────────────────────
+
+// DepartmentCreateRequest is CAT-1's request body.
+type DepartmentCreateRequest struct {
+	Code     string `json:"code" binding:"required"`
+	Name     string `json:"name" binding:"required"`
+	IsSystem bool   `json:"is_system"`
+}
+
+// DepartmentPatchRequest is CAT-2's request body.
+type DepartmentPatchRequest struct {
+	Name          *string `json:"name,omitempty"`
+	IsActive      *bool   `json:"is_active,omitempty"`
+	RecordVersion int64   `json:"record_version"`
+}
+
+// DepartmentResponse is the wire shape for a single department, used by
+// CAT-1, CAT-2, CAT-6, CAT-7, and (embedded in a list) CAT-I1.
+type DepartmentResponse struct {
+	ID            string `json:"id"`
+	Code          string `json:"code"`
+	Name          string `json:"name"`
+	IsSystem      bool   `json:"is_system"`
+	IsActive      bool   `json:"is_active"`
+	RecordVersion int64  `json:"record_version"`
+}
+
+// DepartmentListResponse wraps CAT-6's public list payload.
+type DepartmentListResponse struct {
+	Items []DepartmentResponse `json:"items"`
+}
+
+// InternalDepartmentsResponse is CAT-I1's bulk-read response shape (LLD §7.1).
+type InternalDepartmentsResponse struct {
+	Departments []DepartmentResponse `json:"departments"`
+	AsOf        string               `json:"as_of"`
+}
+
+// ── Plans (CAT-4, CAT-5) ──────────────────────────────────────────────────
+
+// PlanResponse is the wire shape for a single plan.
+type PlanResponse struct {
+	Code                  string         `json:"code" enums:"starter,pro,enterprise"`
+	DisplayName           string         `json:"display_name"`
+	WorkflowTemplateLimit *int           `json:"workflow_template_limit"`
+	TenderLimit           *int           `json:"tender_limit"`
+	TrialDurationDays     int            `json:"trial_duration_days"`
+	SSOEnabled            bool           `json:"sso_enabled"`
+	CustomBranding        string         `json:"custom_branding" enums:"none,logo"`
+	FeatureSet            map[string]any `json:"feature_set"`
+	RecordVersion         int64          `json:"record_version"`
+}
+
+// PlansListResponse wraps CAT-4's list payload.
+type PlansListResponse struct {
+	Items []PlanResponse `json:"items"`
+}
+
+// PlanPatchRequest is CAT-5's request body. WorkflowTemplateLimit/TenderLimit
+// use json.RawMessage at the handler layer (not here) to distinguish
+// absent/null/value — see plan_handler.go's parseLimit.
+type PlanPatchRequest struct {
+	DisplayName       *string        `json:"display_name,omitempty"`
+	TrialDurationDays *int           `json:"trial_duration_days,omitempty"`
+	SSOEnabled        *bool          `json:"sso_enabled,omitempty"`
+	CustomBranding    *string        `json:"custom_branding,omitempty" enums:"none,logo"`
+	FeatureSet        map[string]any `json:"feature_set,omitempty"`
+	RecordVersion     int64          `json:"record_version"`
+}
+
+// InternalPlansResponse is CAT-I2's bulk-read response shape (LLD §7.2).
+type InternalPlansResponse struct {
+	Plans          []PlanResponse   `json:"plans"`
+	RecordVersions map[string]int64 `json:"record_versions"`
+}

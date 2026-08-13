@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant Op as Operator caller
+    participant MW as Middleware chain
+    participant H as DepartmentHandler
+    participant S as DepartmentService
+    participant R as DepartmentRepository
+    participant DB as Postgres
+    participant C as Valkey
+
+    Op->>MW: PATCH /api/v1/operator/departments/:id
+    MW->>MW: ProtectedMiddlewares (identity headers)
+    MW->>MW: IdentityBridgeMiddleware (parse role)
+    MW->>MW: RequireOperatorRole (platform_operator?)
+    MW->>H: c *gin.Context
+    H->>H: requireOperator(c) — defense-in-depth re-check
+    H->>H: raw-JSON check: code/is_system present? → 422 field_immutable
+    H->>S: Patch(ctx, id, name, isActive, recordVersion)
+    S->>R: Update(ctx, id, name, isActive, expectedVersion)
+    R->>DB: UPDATE departments SET ... WHERE id=$1 AND record_version=$2
+    DB-->>DB: trg_touch_departments bumps record_version, updated_at
+    DB-->>DB: chk_system_department_active may reject (422)
+    DB-->>R: updated row, or 0 rows (404/409 probe)
+    R-->>S: *domain.Department, error
+    S->>C: DEL cat:departments (invalidate)
+    S-->>H: *domain.Department, error
+    H-->>Op: 200 + body, or mapped error status

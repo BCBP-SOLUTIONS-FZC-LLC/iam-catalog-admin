@@ -1,0 +1,100 @@
+# Static mirror of deploy/helm/templates/prometheusrule.yaml, for manual
+# `--rule-files` deployment on a Prometheus instance that isn't using the
+# prometheus-operator ServiceMonitor/PrometheusRule CRDs. Keep in sync by
+# hand — there is no sync script for a chart this size (mirrors
+# iam-catalog-admin's own docs/architecture/README.md precedent for
+# deliberately not automating something only this small).
+groups:
+  - name: catadmin_availability
+    rules:
+      - alert: IAMCatalogAdminDown
+        expr: absent(up{job="iam-catalog-admin"} == 1)
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: iam-catalog-admin has no healthy instances
+          description: >-
+            No iam-catalog-admin pods have been scraped as healthy for 2 minutes.
+            Check pod readiness: kubectl get pods -l app.kubernetes.io/name=iam-catalog-admin
+
+      - alert: IAMCatalogAdminReplicasMissing
+        expr: sum(up{job="iam-catalog-admin"}) < 2
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: iam-catalog-admin running below its 2-replica baseline
+          description: >-
+            Fewer than 2 replicas are healthy. Current healthy count: {{ $value }}.
+            A further disruption would take the service to zero.
+
+  - name: catadmin_errors
+    rules:
+      - alert: IAMCatalogAdminHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="iam-catalog-admin", status_class="5xx"}[5m]))
+            /
+          sum(rate(http_requests_total{job="iam-catalog-admin"}[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: iam-catalog-admin 5xx error rate above 5%
+          description: >-
+            {{ $value | humanizePercentage }} of requests are returning 5xx errors
+            over the last 5 minutes. Investigate recent deployments and dependency
+            health (Postgres, Valkey).
+
+      - alert: IAMCatalogAdminCriticalErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="iam-catalog-admin", status_class="5xx"}[5m]))
+            /
+          sum(rate(http_requests_total{job="iam-catalog-admin"}[5m]))
+          > 0.20
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: iam-catalog-admin 5xx error rate above 20%
+          description: >-
+            {{ $value | humanizePercentage }} of requests are returning 5xx errors.
+            Escalate immediately — every CAT-I1/CAT-I2 consumer (Core, Group Mapping)
+            degrades to a stale-if-error cache read while this service is down.
+
+  - name: catadmin_latency
+    rules:
+      - alert: IAMCatalogAdminHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="iam-catalog-admin"}[5m]))
+          ) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: iam-catalog-admin p99 latency above 250ms
+          description: >-
+            The p99 request duration is {{ $value | humanizeDuration }}, well above
+            the 100ms p99 write / 40ms p99 read SLOs (LLD §13.1).
+
+      - alert: IAMCatalogAdminCriticalLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="iam-catalog-admin"}[5m]))
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: iam-catalog-admin p99 latency above 1s
+          description: >-
+            The p99 request duration is {{ $value | humanizeDuration }}. Points at
+            Postgres or Valkey degradation, not this service's own logic.

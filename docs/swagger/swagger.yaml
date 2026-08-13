@@ -1,0 +1,463 @@
+basePath: /api/v1
+definitions:
+  http.DepartmentCreateRequest:
+    properties:
+      code:
+        type: string
+      is_system:
+        type: boolean
+      name:
+        type: string
+    required:
+    - code
+    - name
+    type: object
+  http.DepartmentListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/http.DepartmentResponse'
+        type: array
+    type: object
+  http.DepartmentPatchRequest:
+    properties:
+      is_active:
+        type: boolean
+      name:
+        type: string
+      record_version:
+        type: integer
+    type: object
+  http.DepartmentResponse:
+    properties:
+      code:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_system:
+        type: boolean
+      name:
+        type: string
+      record_version:
+        type: integer
+    type: object
+  http.ErrorResponse:
+    properties:
+      code:
+        example: not_found
+        type: string
+      details:
+        items:
+          $ref: '#/definitions/http.ValidationError'
+        type: array
+      error:
+        example: not_found
+        type: string
+      message:
+        example: resource not found
+        type: string
+      request_id:
+        type: string
+      status:
+        example: 404
+        type: integer
+      trace_id:
+        type: string
+    type: object
+  http.InternalDepartmentsResponse:
+    properties:
+      as_of:
+        type: string
+      departments:
+        items:
+          $ref: '#/definitions/http.DepartmentResponse'
+        type: array
+    type: object
+  http.InternalPlansResponse:
+    properties:
+      plans:
+        items:
+          $ref: '#/definitions/http.PlanResponse'
+        type: array
+      record_versions:
+        additionalProperties:
+          type: integer
+        type: object
+    type: object
+  http.PlanPatchRequest:
+    properties:
+      custom_branding:
+        enum:
+        - none
+        - logo
+        type: string
+      display_name:
+        type: string
+      feature_set:
+        additionalProperties: {}
+        type: object
+      record_version:
+        type: integer
+      sso_enabled:
+        type: boolean
+      trial_duration_days:
+        type: integer
+    type: object
+  http.PlanResponse:
+    properties:
+      code:
+        enum:
+        - starter
+        - pro
+        - enterprise
+        type: string
+      custom_branding:
+        enum:
+        - none
+        - logo
+        type: string
+      display_name:
+        type: string
+      feature_set:
+        additionalProperties: {}
+        type: object
+      record_version:
+        type: integer
+      sso_enabled:
+        type: boolean
+      tender_limit:
+        type: integer
+      trial_duration_days:
+        type: integer
+      workflow_template_limit:
+        type: integer
+    type: object
+  http.PlansListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/http.PlanResponse'
+        type: array
+    type: object
+  http.ValidationError:
+    properties:
+      code:
+        type: string
+      field:
+        type: string
+      message:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: sharmila.dayalan@bcbpsolutions.com
+    name: BCBP Solutions
+  description: |-
+    Authoritative system of record for the platform's two global, non-tenant-scoped reference catalogs — the department catalog and the plan entitlement catalog. Extracted from Org & Membership (`iam-org-membership`) per ADR-0007 Wave 1.
+
+    **No tenant scope.** Neither departments nor plans carries a tenant_id — this service has no RLS/tenant-context GUC (LLD §9). It is a pure leaf: no outbound synchronous calls to any other IAM service, no outbox/SNS/SQS (LLD §10, CAT-EVT-1/2).
+
+    **Route prefixes.**  `/api/v1/departments` — any authenticated caller (JWT via gateway), read-only.  `/api/v1/operator/*` — platform operators (`platform_operator` role): the only writers for departments, and both reads and writes for plans (no public plan-read route).  `/api/v1/internal/*` — in-mesh services (mTLS, `iam-system` role), bulk catalog reads for other IAM services' caches.
+
+    Every mutation echoes `record_version` for optimistic-locking round-trip.
+  license:
+    name: Proprietary
+  title: IAM Catalog / Admin Config API
+  version: "1.0"
+paths:
+  /departments:
+    get:
+      parameters:
+      - description: Filter to is_active=true only
+        in: query
+        name: active_only
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.DepartmentListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-6 — Global department catalog listing
+      tags:
+      - departments
+  /departments/{id}:
+    get:
+      parameters:
+      - description: Department UUID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.DepartmentResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-7 — Single department read
+      tags:
+      - departments
+  /internal/departments:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.InternalDepartmentsResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-I1 — Bulk department catalog read (mesh-only)
+      tags:
+      - internal
+  /internal/plans:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.InternalPlansResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-I2 — Bulk plan catalog read (mesh-only)
+      tags:
+      - internal
+  /operator/departments:
+    post:
+      consumes:
+      - application/json
+      description: is_system and code are immutable after creation.
+      parameters:
+      - description: Department payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.DepartmentCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.DepartmentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "409":
+          description: duplicate_code
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-1 — Add global-catalog department
+      tags:
+      - operator
+  /operator/departments/{id}:
+    delete:
+      parameters:
+      - description: Department UUID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-3 — Blocked (405); retire via CAT-2 is_active=false
+      tags:
+      - operator
+    patch:
+      consumes:
+      - application/json
+      description: System-department deactivation is blocked (422 system_department_cannot_be_retired).
+        Optimistic-locked on record_version.
+      parameters:
+      - description: Department UUID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Patch payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.DepartmentPatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.DepartmentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "409":
+          description: optimistic_lock_conflict
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "422":
+          description: field_immutable | system_department_cannot_be_retired
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-2 — Update name or is_active
+      tags:
+      - operator
+  /operator/plans:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PlansListResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-4 — List plan entitlement catalog
+      tags:
+      - operator
+  /operator/plans/{code}:
+    get:
+      parameters:
+      - description: Plan code
+        enum:
+        - starter
+        - pro
+        - enterprise
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PlanResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-4 — Single plan read by code
+      tags:
+      - operator
+    patch:
+      consumes:
+      - application/json
+      description: No create/delete API — the tier set is fixed to the tenant_plan
+        ENUM. Optimistic-locked on record_version.
+      parameters:
+      - description: Plan code
+        enum:
+        - starter
+        - pro
+        - enterprise
+        in: path
+        name: code
+        required: true
+        type: string
+      - description: Plan patch
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.PlanPatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PlanResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "409":
+          description: optimistic_lock_conflict
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: CAT-5 — Edit plan entitlements (PATCH-only)
+      tags:
+      - operator
+tags:
+- description: Global department catalog (CAT-6, CAT-7)
+  name: departments
+- description: Platform operator writes — departments (CAT-1, CAT-2, CAT-3) and plans (CAT-4, CAT-5)
+  name: operator
+- description: In-mesh bulk catalog reads (CAT-I1, CAT-I2)
+  name: internal
+securityDefinitions:
+  TenantID:
+    description: Tenant UUID injected by the API gateway. Present on every request
+      per the gateway contract even though this service's own data is tenant-agnostic.
+    in: header
+    name: x-tenant-id
+    type: apiKey
+  TenantRoles:
+    description: Comma-separated tenant-role list injected by the API gateway. Operator
+      routes require `platform_operator`; internal routes require `iam-system`.
+    in: header
+    name: x-tenant-roles
+    type: apiKey
+  UserID:
+    description: Authenticated user UUID injected by the API gateway. Use `iam-system`
+      for in-mesh service calls hitting `/api/v1/internal/*`.
+    in: header
+    name: x-user-id
+    type: apiKey
+swagger: "2.0"

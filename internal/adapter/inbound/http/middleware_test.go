@@ -1,0 +1,199 @@
+package http
+
+import (
+	"bytes"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/pkg/requestctx"
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func runMiddleware(mw gin.HandlerFunc, req *http.Request) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+	mw(c)
+	return w
+}
+
+func TestRequireOperatorRole(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	reqWithRole := req.WithContext(requestctx.WithContext(req.Context(), &requestctx.RequestContext{Roles: []string{"platform_operator"}}))
+	w := runMiddleware(RequireOperatorRole(), reqWithRole)
+	assert.NotEqual(t, http.StatusForbidden, w.Code)
+
+	reqNoRole := req.WithContext(requestctx.WithContext(req.Context(), &requestctx.RequestContext{Roles: []string{"tenant_admin"}}))
+	w = runMiddleware(RequireOperatorRole(), reqNoRole)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestRequireSystemRole(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	reqWithRole := req.WithContext(requestctx.WithContext(req.Context(), &requestctx.RequestContext{Roles: []string{"iam-system"}}))
+	w := runMiddleware(RequireSystemRole(), reqWithRole)
+	assert.NotEqual(t, http.StatusForbidden, w.Code)
+
+	reqNoRole := req.WithContext(requestctx.WithContext(req.Context(), &requestctx.RequestContext{Roles: []string{}}))
+	w = runMiddleware(RequireSystemRole(), reqNoRole)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestRequireJSONContentType(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Content-Type", "text/plain")
+	w := runMiddleware(RequireJSONContentType(), req)
+	assert.Equal(t, http.StatusUnsupportedMediaType, w.Code)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{}`)))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := runMiddleware(RequireJSONContentType(), req2)
+	assert.NotEqual(t, http.StatusUnsupportedMediaType, w2.Code)
+
+	// GET requests are never gated.
+	req3 := httptest.NewRequest(http.MethodGet, "/", nil)
+	w3 := runMiddleware(RequireJSONContentType(), req3)
+	assert.NotEqual(t, http.StatusUnsupportedMediaType, w3.Code)
+
+	// A POST/PUT/PATCH with no body at all (ContentLength == 0) is never
+	// gated either — nothing to type-check.
+	req4 := httptest.NewRequest(http.MethodPost, "/", nil)
+	w4 := runMiddleware(RequireJSONContentType(), req4)
+	assert.NotEqual(t, http.StatusUnsupportedMediaType, w4.Code)
+}
+
+func TestParseUUIDParam(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Params = gin.Params{{Key: "id", Value: "not-a-uuid"}}
+	_, err := parseUUIDParam(c, "id")
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, domain.ErrValidation.Error(), de.Code)
+
+	c.Params = gin.Params{{Key: "id", Value: ""}}
+	_, err = parseUUIDParam(c, "id")
+	require.Error(t, err)
+}
+
+func TestHandleError_GenericFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	HandleError(c, errors.New("boom"))
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestHandleError_DomainErrorMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	HandleError(c, domain.NewError(domain.ErrDepartmentNotFound, "not found"))
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestHandleError_DependencyUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	HandleError(c, domain.NewError(domain.ErrDependencyUnavailable, "database unavailable"))
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestHandleError_MissingIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	HandleError(c, domain.NewError(domain.ErrMissingIdentity, "missing identity"))
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandleError_PgErrorUnavailableSQLState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	HandleError(c, &pgconn.PgError{Code: "57014", Message: "canceling statement due to statement timeout"})
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestHandleError_PgErrorNonUnavailableSQLState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	HandleError(c, &pgconn.PgError{Code: "23505", Message: "duplicate key"})
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestRequireOperator_NoIdentityContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	err := requireOperator(c)
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, domain.ErrMissingIdentity.Error(), de.Code)
+}
+
+func TestRequireSystem_NoIdentityContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	err := requireSystem(c)
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, domain.ErrMissingIdentity.Error(), de.Code)
+}
+
+func TestBufferedWriter_DirectMethods(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	// Fresh writer: Write() before any WriteHeader() call must default
+	// status to 200, and Written()/Status() must reflect that.
+	buf := &bufferedWriter{ResponseWriter: c.Writer, buf: &bytes.Buffer{}}
+	assert.False(t, buf.Written())
+	n, err := buf.Write([]byte("hi"))
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	assert.Equal(t, http.StatusOK, buf.status)
+	assert.Equal(t, http.StatusOK, buf.Status())
+	assert.True(t, buf.Written())
+
+	n2, err := buf.WriteString("more")
+	require.NoError(t, err)
+	assert.Equal(t, 4, n2)
+	assert.Equal(t, "himore", buf.buf.String())
+
+	// A writer that never had Write/WriteHeader called falls back to the
+	// underlying ResponseWriter's own Status()/Written() reporting.
+	buf2 := &bufferedWriter{ResponseWriter: c.Writer, buf: &bytes.Buffer{}}
+	assert.Equal(t, c.Writer.Status(), buf2.Status())
+}

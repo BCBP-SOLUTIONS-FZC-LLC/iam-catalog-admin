@@ -1,0 +1,26 @@
+graph TD
+    subgraph cmd["Composition Root — cmd/catalog-admin-config/"]
+        main["main.go\nwire pool + cache + repos + services + handlers\nrouter registration · graceful shutdown"]
+    end
+    subgraph core["Core — internal/core/"]
+        service["service/\nDepartmentService · PlanService\nbusiness rules + cat:* cache read-through"]
+        port["port/\nDepartmentRepository · PlanRepository · Cache"]
+        domain["domain/\nDepartment · Plan · BrandingLevel · TenantPlan\nDomainError catalogue"]
+    end
+    subgraph adapter["Adapters — internal/adapter/"]
+        http["inbound/http/\nGin handlers · DTOs · middleware\nerror-model translation"]
+        pg["outbound/postgres/\nrepositories · migrations\nRunMigrations"]
+        valkey["outbound/valkey/\nCache implementation"]
+        metrics["outbound/metrics/\ncatadmin_* Prometheus counters"]
+    end
+
+    main --> http
+    main --> pg
+    main --> valkey
+    main --> service
+    http --> service
+    service --> port
+    service --> domain
+    pg -.implements.-> port
+    valkey -.implements.-> port
+    valkey --> metrics

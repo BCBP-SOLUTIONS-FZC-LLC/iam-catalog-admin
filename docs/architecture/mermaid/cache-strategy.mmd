@@ -1,0 +1,19 @@
+flowchart TD
+    A["Departments(ctx) / Plans(ctx) call"] --> B{"cat:departments\n/ cat:plans\nprimary key hit?"}
+    B -- yes --> Z["return cached catalog"]
+    B -- no --> C["query Postgres"]
+    C --> D{"query error?"}
+    D -- no --> E["populate cat:* (60s TTL)\nreturn catalog"]
+    D -- yes --> F["log error"]
+    F --> G["return dependency_unavailable\n(CAT-FAIL-1: cache is advisory,\nPostgres is the source of truth)"]
+
+    subgraph consumer["Consumer side (e.g. iam-org-membership) — LLD §8"]
+        H["CatalogReader.Departments/Plans"] --> I{"om:departments\n/ om:plans hit?\n(600s TTL)"}
+        I -- yes --> J["return cached catalog"]
+        I -- no --> K["call CAT-I1/CAT-I2"]
+        K --> L{"call succeeds?"}
+        L -- yes --> M["populate om:* (600s)\n+ om:*:stale (24h)\nreturn catalog"]
+        L -- no --> N{"om:*:stale hit?\n(24h TTL)"}
+        N -- yes --> O["serve stale + log warning\n(CAT-D4)"]
+        N -- no --> P["ErrCatalogServiceUnavailable\n— never a silent wrong answer"]
+    end

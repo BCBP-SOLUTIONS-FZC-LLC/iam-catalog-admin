@@ -1,0 +1,681 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Authoritative system of record for the platform's two global, non-tenant-scoped reference catalogs — the department catalog and the plan entitlement catalog. Extracted from Org & Membership (`iam-org-membership`) per ADR-0007 Wave 1.\n\n**No tenant scope.** Neither departments nor plans carries a tenant_id — this service has no RLS/tenant-context GUC (LLD §9). It is a pure leaf: no outbound synchronous calls to any other IAM service, no outbox/SNS/SQS (LLD §10, CAT-EVT-1/2).\n\n**Route prefixes.**  `/api/v1/departments` — any authenticated caller (JWT via gateway), read-only.  `/api/v1/operator/*` — platform operators (`platform_operator` role): the only writers for departments, and both reads and writes for plans (no public plan-read route).  `/api/v1/internal/*` — in-mesh services (mTLS, `iam-system` role), bulk catalog reads for other IAM services' caches.\n\nEvery mutation echoes `record_version` for optimistic-locking round-trip.",
+        "title": "IAM Catalog / Admin Config API",
+        "contact": {
+            "name": "BCBP Solutions",
+            "email": "sharmila.dayalan@bcbpsolutions.com"
+        },
+        "license": {
+            "name": "Proprietary"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/departments": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "departments"
+                ],
+                "summary": "CAT-6 — Global department catalog listing",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter to is_active=true only",
+                        "name": "active_only",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DepartmentListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/departments/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "departments"
+                ],
+                "summary": "CAT-7 — Single department read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Department UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DepartmentResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/internal/departments": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "internal"
+                ],
+                "summary": "CAT-I1 — Bulk department catalog read (mesh-only)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.InternalDepartmentsResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/internal/plans": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "internal"
+                ],
+                "summary": "CAT-I2 — Bulk plan catalog read (mesh-only)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.InternalPlansResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/operator/departments": {
+            "post": {
+                "description": "is_system and code are immutable after creation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operator"
+                ],
+                "summary": "CAT-1 — Add global-catalog department",
+                "parameters": [
+                    {
+                        "description": "Department payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.DepartmentCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.DepartmentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "duplicate_code",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/operator/departments/{id}": {
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operator"
+                ],
+                "summary": "CAT-3 — Blocked (405); retire via CAT-2 is_active=false",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Department UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "System-department deactivation is blocked (422 system_department_cannot_be_retired). Optimistic-locked on record_version.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operator"
+                ],
+                "summary": "CAT-2 — Update name or is_active",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Department UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Patch payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.DepartmentPatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DepartmentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "optimistic_lock_conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "field_immutable | system_department_cannot_be_retired",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/operator/plans": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operator"
+                ],
+                "summary": "CAT-4 — List plan entitlement catalog",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.PlansListResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/operator/plans/{code}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operator"
+                ],
+                "summary": "CAT-4 — Single plan read by code",
+                "parameters": [
+                    {
+                        "enum": [
+                            "starter",
+                            "pro",
+                            "enterprise"
+                        ],
+                        "type": "string",
+                        "description": "Plan code",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.PlanResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "No create/delete API — the tier set is fixed to the tenant_plan ENUM. Optimistic-locked on record_version.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operator"
+                ],
+                "summary": "CAT-5 — Edit plan entitlements (PATCH-only)",
+                "parameters": [
+                    {
+                        "enum": [
+                            "starter",
+                            "pro",
+                            "enterprise"
+                        ],
+                        "type": "string",
+                        "description": "Plan code",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Plan patch",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.PlanPatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.PlanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "optimistic_lock_conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "http.DepartmentCreateRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.DepartmentListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.DepartmentResponse"
+                    }
+                }
+            }
+        },
+        "http.DepartmentPatchRequest": {
+            "type": "object",
+            "properties": {
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "record_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.DepartmentResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "record_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "not_found"
+                },
+                "details": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ValidationError"
+                    }
+                },
+                "error": {
+                    "type": "string",
+                    "example": "not_found"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "resource not found"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer",
+                    "example": 404
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.InternalDepartmentsResponse": {
+            "type": "object",
+            "properties": {
+                "as_of": {
+                    "type": "string"
+                },
+                "departments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.DepartmentResponse"
+                    }
+                }
+            }
+        },
+        "http.InternalPlansResponse": {
+            "type": "object",
+            "properties": {
+                "plans": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.PlanResponse"
+                    }
+                },
+                "record_versions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "http.PlanPatchRequest": {
+            "type": "object",
+            "properties": {
+                "custom_branding": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "logo"
+                    ]
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "feature_set": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "record_version": {
+                    "type": "integer"
+                },
+                "sso_enabled": {
+                    "type": "boolean"
+                },
+                "trial_duration_days": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.PlanResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "enum": [
+                        "starter",
+                        "pro",
+                        "enterprise"
+                    ]
+                },
+                "custom_branding": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "logo"
+                    ]
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "feature_set": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "record_version": {
+                    "type": "integer"
+                },
+                "sso_enabled": {
+                    "type": "boolean"
+                },
+                "tender_limit": {
+                    "type": "integer"
+                },
+                "trial_duration_days": {
+                    "type": "integer"
+                },
+                "workflow_template_limit": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.PlansListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.PlanResponse"
+                    }
+                }
+            }
+        },
+        "http.ValidationError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "departments",
+            "description": "Global department catalog (CAT-6, CAT-7)"
+        },
+        {
+            "name": "operator",
+            "description": "Platform operator writes — departments (CAT-1, CAT-2, CAT-3) and plans (CAT-4, CAT-5)"
+        },
+        {
+            "name": "internal",
+            "description": "In-mesh bulk catalog reads (CAT-I1, CAT-I2)"
+        }
+    ],
+    "securityDefinitions": {
+        "TenantID": {
+            "description": "Tenant UUID injected by the API gateway. Present on every request per the gateway contract even though this service's own data is tenant-agnostic.",
+            "type": "apiKey",
+            "name": "x-tenant-id",
+            "in": "header"
+        },
+        "TenantRoles": {
+            "description": "Comma-separated tenant-role list injected by the API gateway. Operator routes require `platform_operator`; internal routes require `iam-system`.",
+            "type": "apiKey",
+            "name": "x-tenant-roles",
+            "in": "header"
+        },
+        "UserID": {
+            "description": "Authenticated user UUID injected by the API gateway. Use `iam-system` for in-mesh service calls hitting `/api/v1/internal/*`.",
+            "type": "apiKey",
+            "name": "x-user-id",
+            "in": "header"
+        }
+    }
+}
