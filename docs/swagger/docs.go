@@ -291,7 +291,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "field_immutable | system_department_cannot_be_retired",
+                        "description": "field_immutable | system_name_immutable | system_department_cannot_be_retired",
                         "schema": {
                             "$ref": "#/definitions/http.ErrorResponse"
                         }

@@ -76,6 +76,14 @@ func TestDepartmentHandler_DeleteBlocked_Always405(t *testing.T) {
 	setParams(c, gin.Params{{Key: "id", Value: "11111111-1111-1111-1111-111111111111"}})
 	h.DeleteBlocked(c)
 	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+	// Must go through the standard ErrorResponse envelope like every other
+	// error path — not a hand-rolled gin.H missing error/status/trace_id/
+	// request_id.
+	var er ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &er))
+	assert.Equal(t, "method_not_allowed", er.Code)
+	assert.Equal(t, "method_not_allowed", er.Error)
+	assert.Equal(t, http.StatusMethodNotAllowed, er.Status)
 }
 
 func TestDepartmentHandler_Get_InvalidUUID(t *testing.T) {

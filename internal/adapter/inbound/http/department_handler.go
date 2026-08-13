@@ -126,7 +126,7 @@ func (h *DepartmentHandler) Create(c *gin.Context) {
 // @Failure      400      {object}  ErrorResponse
 // @Failure      404      {object}  ErrorResponse
 // @Failure      409      {object}  ErrorResponse  "optimistic_lock_conflict"
-// @Failure      422      {object}  ErrorResponse  "field_immutable | system_department_cannot_be_retired"
+// @Failure      422      {object}  ErrorResponse  "field_immutable | system_name_immutable | system_department_cannot_be_retired"
 // @Router       /operator/departments/{id} [patch]
 func (h *DepartmentHandler) Patch(c *gin.Context) {
 	if err := requireOperator(c); err != nil {
@@ -187,9 +187,5 @@ func (h *DepartmentHandler) DeleteBlocked(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	_ = h.svc.DeleteBlocked() // fixed 405 contract (D-4/OP-3); response shape below is not derived from the error
-	c.JSON(http.StatusMethodNotAllowed, gin.H{
-		"code":    "cannot_delete_system_department",
-		"message": "departments cannot be deleted; retire via PATCH is_active=false",
-	})
+	HandleError(c, h.svc.DeleteBlocked())
 }

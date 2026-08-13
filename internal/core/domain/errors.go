@@ -28,7 +28,11 @@ var (
 
 	// Domain-rule (422 family)
 	ErrFieldImmutable                  = errors.New("field_immutable")
+	ErrSystemNameImmutable             = errors.New("system_name_immutable")
 	ErrSystemDepartmentCannotBeRetired = errors.New("system_department_cannot_be_retired")
+
+	// Method-not-allowed (405 family)
+	ErrMethodNotAllowed = errors.New("method_not_allowed")
 
 	// Dependency (503 family)
 	ErrDBUnavailable    = errors.New("db_unavailable")

@@ -252,11 +252,11 @@ func domainErrorStatus(de *domain.DomainError) int {
 		errors.Is(de.Cause, domain.ErrCacheUnavailable),
 		errors.Is(de.Cause, domain.ErrDependencyUnavailable):
 		return http.StatusServiceUnavailable
+	case errors.Is(de.Cause, domain.ErrMethodNotAllowed):
+		return http.StatusMethodNotAllowed
 	default:
-		// Remaining domain codes (field_immutable, system_department_cannot_be_retired,
-		// cannot_delete_system_department) are 422 domain-rule violations —
-		// except CAT-3's DeleteBlocked, which the handler overrides to 405
-		// explicitly rather than relying on this default.
+		// Remaining domain codes (field_immutable, system_name_immutable,
+		// system_department_cannot_be_retired) are 422 domain-rule violations.
 		return http.StatusUnprocessableEntity
 	}
 }

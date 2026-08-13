@@ -42,6 +42,12 @@ mesh for internal calls) — the same trust model every other IAM service uses. 
 | CAT-I1 | `GET /internal/departments` | mesh-only (`iam-system`) | Bulk read for consumer cache population |
 | CAT-I2 | `GET /internal/plans` | mesh-only (`iam-system`) | Bulk read for consumer cache population |
 
+CAT-I1/CAT-I2 are "mesh-only" by auth (`iam-system` role), not by path — unlike some other
+services' internal routes, they still live under the shared `/api/v1` base path (full paths:
+`GET /api/v1/internal/departments`, `GET /api/v1/internal/plans`), matching `main.go`'s actual
+route nesting and the contract `iam-org-membership`'s `CatalogAdminClient` is already built
+against. See §2 below for the fully-qualified paths a mesh caller should use.
+
 Every write endpoint re-checks the `platform_operator` role inside the handler in addition to the
 route-group middleware (defense-in-depth, mirrors O&M's AUTH-6 pattern). Full request/response
 shapes and error codes: `internal/adapter/inbound/http/dto.go` and the handler doc-comments in the

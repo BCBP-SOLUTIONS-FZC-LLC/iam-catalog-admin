@@ -115,8 +115,12 @@ func (s *DepartmentService) Patch(ctx context.Context, id uuid.UUID, name *strin
 			return nil, domain.NewError(domain.ErrSystemDepartmentCannotBeRetired, "system department cannot be retired")
 		}
 		if isCheckViolation(err, "system department name is immutable") {
-			return nil, domain.NewError(domain.ErrFieldImmutable, "system department name is immutable").
-				WithDetails(map[string]any{"code": "field_immutable", "field": "name"})
+			// D-11: renaming a system department is a distinct 422 from the
+			// handler-level field_immutable check on code/is_system in the
+			// body (LLD §6/§20) — this is a rule about *which* department
+			// (is_system=true), not about which field was sent.
+			return nil, domain.NewError(domain.ErrSystemNameImmutable, "system department name is immutable").
+				WithDetails(map[string]any{"field": "name"})
 		}
 		return nil, err
 	}
@@ -124,11 +128,15 @@ func (s *DepartmentService) Patch(ctx context.Context, id uuid.UUID, name *strin
 	return d, nil
 }
 
-// DeleteBlocked is CAT-3 — always returns the 405-equivalent domain error
-// (departments are never hard-deleted; retire via CAT-2 is_active=false).
+// DeleteBlocked is CAT-3 — always returns the 405 method_not_allowed domain
+// error (D-4/OP-3: departments are never hard-deleted, regardless of
+// is_system; retire via CAT-2 is_active=false). Unconditional — unlike
+// iam-org-membership's conditional 422 cannot_delete_system_department
+// (blocks only is_system=true departments), this service blocks DELETE
+// entirely, so 405 (the method itself is disallowed) is the correct status,
+// not a 422 domain-rule check.
 func (s *DepartmentService) DeleteBlocked() error {
-	return domain.NewError(domain.ErrValidation, "departments cannot be deleted; retire via is_active=false").
-		WithDetails(map[string]any{"code": "cannot_delete_system_department"})
+	return domain.NewError(domain.ErrMethodNotAllowed, "departments cannot be deleted; retire via is_active=false")
 }
 
 func (s *DepartmentService) invalidateCache(ctx context.Context) {

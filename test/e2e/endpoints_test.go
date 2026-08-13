@@ -245,7 +245,10 @@ func TestE2E030_DeleteDepartment_Always405(t *testing.T) {
 
 	status, raw := doJSON(t, env, http.MethodDelete, "/api/v1/operator/departments/"+id, operatorHeaders, nil)
 	require.Equal(t, http.StatusMethodNotAllowed, status, string(raw))
-	assert.Equal(t, "cannot_delete_system_department", decodeMap(t, raw)["code"])
+	body := decodeMap(t, raw)
+	assert.Equal(t, "method_not_allowed", body["code"])
+	assert.Equal(t, "method_not_allowed", body["error"])
+	assert.EqualValues(t, http.StatusMethodNotAllowed, body["status"])
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -592,4 +595,19 @@ func TestE2E091_PatchPlanThenVisibleAcrossAllReadPaths(t *testing.T) {
 		}
 	}
 	assert.True(t, found, fmt.Sprintf("enterprise plan missing from CAT-I2 response: %s", raw))
+}
+
+// Test Case ID:      CAT-E2E-092
+// Feature:           CAT-2 · renaming a system department → 422 system_name_immutable (D-11)
+// Priority: P1 · Severity: Major · Automation Status: Automated
+func TestE2E092_PatchDepartment_SystemDeptRename_Returns422SystemNameImmutable(t *testing.T) {
+	env := newE2EEnv(t)
+	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
+		map[string]any{"code": "SYS_092", "name": "System Dept", "is_system": true})
+	id := decodeMap(t, createRaw)["id"].(string)
+
+	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/departments/"+id, operatorHeaders,
+		map[string]any{"name": "Renamed", "record_version": 1})
+	require.Equal(t, http.StatusUnprocessableEntity, status, string(raw))
+	assert.Equal(t, "system_name_immutable", decodeMap(t, raw)["code"])
 }
