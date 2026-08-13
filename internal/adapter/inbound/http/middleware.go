@@ -236,7 +236,8 @@ func errorResponseWithDetails(er ErrorResponse, details map[string]any) map[stri
 func domainErrorStatus(de *domain.DomainError) int {
 	switch {
 	case errors.Is(de.Cause, domain.ErrValidation),
-		errors.Is(de.Cause, domain.ErrNoMutableField):
+		errors.Is(de.Cause, domain.ErrNoMutableField),
+		errors.Is(de.Cause, domain.ErrInvalidFeatureValue):
 		return http.StatusBadRequest
 	case errors.Is(de.Cause, domain.ErrMissingIdentity):
 		return http.StatusUnauthorized

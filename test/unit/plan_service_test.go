@@ -163,8 +163,8 @@ func TestPlanService_Patch_NonScalarFeatureSetRejected(t *testing.T) {
 	require.Error(t, err)
 	var de *domain.DomainError
 	require.ErrorAs(t, err, &de)
-	assert.Equal(t, domain.ErrValidation.Error(), de.Code)
-	assert.Equal(t, "invalid_feature_value", de.Details["code"])
+	assert.Equal(t, domain.ErrInvalidFeatureValue.Error(), de.Code)
+	assert.Equal(t, "nested", de.Details["key"])
 }
 
 func TestPlanService_Patch_OptimisticLockConflict(t *testing.T) {

@@ -92,7 +92,7 @@ func (h *PlanHandler) Get(c *gin.Context) {
 // @Param        code     path      string             true  "Plan code"  Enums(starter, pro, enterprise)
 // @Param        request  body      PlanPatchRequest   true  "Plan patch"
 // @Success      200      {object}  PlanResponse
-// @Failure      400      {object}  ErrorResponse
+// @Failure      400      {object}  ErrorResponse  "no_mutable_field | invalid_feature_value | validation_error"
 // @Failure      403      {object}  ErrorResponse
 // @Failure      404      {object}  ErrorResponse
 // @Failure      409      {object}  ErrorResponse  "optimistic_lock_conflict"

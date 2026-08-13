@@ -18,6 +18,7 @@ var (
 	ErrOptimisticLockConflict = errors.New("optimistic_lock_conflict")
 	ErrDependencyUnavailable  = errors.New("dependency_unavailable")
 	ErrNoMutableField         = errors.New("no_mutable_field")
+	ErrInvalidFeatureValue    = errors.New("invalid_feature_value")
 
 	// Not-found (404 family)
 	ErrDepartmentNotFound = errors.New("department_not_found")

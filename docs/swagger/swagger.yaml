@@ -416,7 +416,7 @@ paths:
           schema:
             $ref: '#/definitions/http.PlanResponse'
         "400":
-          description: Bad Request
+          description: no_mutable_field | invalid_feature_value | validation_error
           schema:
             $ref: '#/definitions/http.ErrorResponse'
         "403":

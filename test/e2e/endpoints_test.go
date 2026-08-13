@@ -445,6 +445,19 @@ func TestE2E065_PatchPlan_NegativeLimit_Returns400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, status)
 }
 
+// Test Case ID:      CAT-E2E-066
+// Feature:           CAT-5 · non-scalar feature_set value → 400 invalid_feature_value (PLAN-6(d))
+// Priority: P1 · Severity: Major · Automation Status: Automated
+func TestE2E066_PatchPlan_NonScalarFeatureSetValue_Returns400InvalidFeatureValue(t *testing.T) {
+	env := newE2EEnv(t)
+	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/starter", operatorHeaders,
+		map[string]any{"feature_set": map[string]any{"nested": map[string]any{"a": 1}}, "record_version": 1})
+	require.Equal(t, http.StatusBadRequest, status, string(raw))
+	body := decodeMap(t, raw)
+	assert.Equal(t, "invalid_feature_value", body["code"])
+	assert.Equal(t, "invalid_feature_value", body["error"])
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 // CAT-I1/CAT-I2 — internal mesh-only bulk reads
 // ═════════════════════════════════════════════════════════════════════════

@@ -135,3 +135,19 @@ func TestPlanHandler_Patch_OptimisticLockConflict(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &er))
 	assert.Equal(t, "optimistic_lock_conflict", er.Code)
 }
+
+func TestPlanHandler_Patch_NonScalarFeatureSetValue_Returns400InvalidFeatureValue(t *testing.T) {
+	h := NewPlanHandler(newTestPlanService())
+	body := []byte(`{"feature_set":{"nested":{"a":1}},"record_version":1}`)
+	c, w := newTestContext(t, http.MethodPatch, "/api/v1/operator/plans/starter", body, []string{"platform_operator"})
+	setParams(c, gin.Params{{Key: "code", Value: "starter"}})
+	h.Patch(c)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var er ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &er))
+	// LLD §20 Appendix A: a distinct invalid_feature_value code, not the
+	// generic validation_error — error and code must agree, like every
+	// other error this service returns.
+	assert.Equal(t, "invalid_feature_value", er.Code)
+	assert.Equal(t, "invalid_feature_value", er.Error)
+}

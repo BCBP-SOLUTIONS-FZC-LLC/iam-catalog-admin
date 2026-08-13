@@ -98,13 +98,16 @@ func (s *PlanService) Patch(ctx context.Context, code domain.TenantPlan, patch *
 	}
 	// PLAN-6(d): feature_set values must be scalars — no nested
 	// objects/arrays, the same defense O-4's allow-list check applies to
-	// Core's tenants.feature_flags override delta (LLD §5.3).
+	// Core's tenants.feature_flags override delta (LLD §5.3). Distinct 400
+	// invalid_feature_value (LLD §20 Appendix A), not the generic
+	// validation_error — a client needs to distinguish "malformed request"
+	// from "this specific key's value is the wrong shape".
 	for k, v := range patch.FeatureSet {
 		switch v.(type) {
 		case string, bool, float64, int, int64, nil:
 		default:
-			return nil, domain.NewError(domain.ErrValidation, "feature_set values must be scalars").
-				WithDetails(map[string]any{"code": "invalid_feature_value", "key": k})
+			return nil, domain.NewError(domain.ErrInvalidFeatureValue, "feature_set values must be scalars").
+				WithDetails(map[string]any{"key": k})
 		}
 	}
 	p, err := s.repo.Update(ctx, code, patch)

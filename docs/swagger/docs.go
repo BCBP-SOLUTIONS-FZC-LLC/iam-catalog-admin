@@ -411,7 +411,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "no_mutable_field | invalid_feature_value | validation_error",
                         "schema": {
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
