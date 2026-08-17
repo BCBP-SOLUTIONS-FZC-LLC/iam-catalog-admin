@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -139,6 +140,51 @@ func TestHandleError_DomainErrorMapping(t *testing.T) {
 
 	HandleError(c, domain.NewError(domain.ErrDepartmentNotFound, "not found"))
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// TestHandleError_SubCodeOverride_SyncsErrorField verifies LLD §20's
+// documented invariant ("error and code must agree, like every other
+// error this service returns") holds even when a handler attaches a more
+// specific sub-code via WithDetails on top of a generic sentinel — e.g.
+// duplicate_code on domain.ErrConflict, invalid_uuid on
+// domain.ErrValidation. Regression test for the CAT-Q6 mismatch, where
+// "error" previously stayed on the generic sentinel after "code" was
+// overridden.
+func TestHandleError_SubCodeOverride_SyncsErrorField(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cases := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{
+			name: "duplicate_code sub-code over conflict sentinel",
+			err: domain.NewError(domain.ErrConflict, "department code already exists").
+				WithDetails(map[string]any{"code": "duplicate_code"}),
+			code: "duplicate_code",
+		},
+		{
+			name: "invalid_uuid sub-code over validation_error sentinel",
+			err: domain.NewError(domain.ErrValidation, "id is not a valid UUID").
+				WithDetails(map[string]any{"code": "invalid_uuid"}),
+			code: "invalid_uuid",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+			HandleError(c, tc.err)
+
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			assert.Equal(t, tc.code, body["code"])
+			assert.Equal(t, tc.code, body["error"])
+		})
+	}
 }
 
 func TestHandleError_DependencyUnavailable(t *testing.T) {

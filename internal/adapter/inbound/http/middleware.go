@@ -259,6 +259,13 @@ func errorResponseWithDetails(er ErrorResponse, details map[string]any) map[stri
 	for k, v := range details {
 		out[k] = v
 	}
+	// A handler-level sub-code (e.g. duplicate_code, invalid_uuid) attached
+	// via WithDetails({"code": ...}) overrides the generic sentinel in
+	// "code" above — keep "error" in lockstep so the two fields never
+	// disagree, matching every other error this service returns (LLD §20).
+	if code, ok := out["code"]; ok {
+		out["error"] = code
+	}
 	return out
 }
 
