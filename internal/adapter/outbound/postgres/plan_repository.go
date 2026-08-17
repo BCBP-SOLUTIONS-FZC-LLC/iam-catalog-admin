@@ -13,8 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// PlanRepository operates on the global plans catalog (no RLS). Ported
-// from iam-org-membership's internal/adapter/outbound/postgres/plan_repository.go.
 type PlanRepository struct {
 	pool *pgcommon.Pool
 }
@@ -52,21 +50,28 @@ func scanPlan(row pgx.Row) (*domain.Plan, error) {
 func (r *PlanRepository) List(ctx context.Context) ([]domain.Plan, error) {
 	var out []domain.Plan
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+planCols+` FROM plans ORDER BY code`)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			p, err := scanPlan(rows)
-			if err != nil {
-				return err
-			}
-			out = append(out, *p)
-		}
-		return rows.Err()
+		var e error
+		out, e = planListFromTx(ctx, tx)
+		return e
 	})
 	return out, err
+}
+
+func planListFromTx(ctx context.Context, tx pgx.Tx) ([]domain.Plan, error) {
+	rows, err := tx.Query(ctx, `SELECT `+planCols+` FROM plans ORDER BY code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Plan
+	for rows.Next() {
+		p, err := scanPlan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
+	}
+	return out, rows.Err()
 }
 
 func (r *PlanRepository) FindByCode(ctx context.Context, code domain.TenantPlan) (*domain.Plan, error) {
@@ -86,8 +91,6 @@ func (r *PlanRepository) FindByCode(ctx context.Context, code domain.TenantPlan)
 	return out, err
 }
 
-// Update applies PlanPatch with optimistic locking. The double-pointer on
-// limits distinguishes "not set" from "set to nil (unlimited)".
 func (r *PlanRepository) Update(ctx context.Context, code domain.TenantPlan, patch *domain.PlanPatch) (*domain.Plan, error) {
 	if patch == nil {
 		return nil, domain.NewError(domain.ErrValidation, "patch is required")
@@ -131,25 +134,30 @@ func (r *PlanRepository) Update(ctx context.Context, code domain.TenantPlan, pat
 
 	var out *domain.Plan
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, sql, args...)
-		p, err := scanPlan(row)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				var v int64
-				probe := tx.QueryRow(ctx, `SELECT record_version FROM plans WHERE code = $1`, string(code))
-				if perr := probe.Scan(&v); perr != nil {
-					if errors.Is(perr, pgx.ErrNoRows) {
-						return domain.NewError(domain.ErrPlanNotFound, "plan not found")
-					}
-					return perr
-				}
-				return domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").
-					WithDetails(map[string]any{"record_version": v})
-			}
-			return err
-		}
-		out = p
-		return nil
+		var e error
+		out, e = planUpdateFromTx(ctx, tx, code, sql, args)
+		return e
 	})
 	return out, err
+}
+
+func planUpdateFromTx(ctx context.Context, tx pgx.Tx, code domain.TenantPlan, sql string, args []any) (*domain.Plan, error) {
+	row := tx.QueryRow(ctx, sql, args...)
+	p, err := scanPlan(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			var v int64
+			probe := tx.QueryRow(ctx, `SELECT record_version FROM plans WHERE code = $1`, string(code))
+			if perr := probe.Scan(&v); perr != nil {
+				if errors.Is(perr, pgx.ErrNoRows) {
+					return nil, domain.NewError(domain.ErrPlanNotFound, "plan not found")
+				}
+				return nil, perr
+			}
+			return nil, domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").
+				WithDetails(map[string]any{"record_version": v})
+		}
+		return nil, err
+	}
+	return p, nil
 }

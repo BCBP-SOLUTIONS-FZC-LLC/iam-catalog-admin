@@ -5,7 +5,8 @@
 # Trimmed from iam-user-profile's validate-test.yml: no go-arch-lint (no
 # .go-arch-lint.yml config here yet), no Swagger staleness check (this
 # service has no Swagger setup), no event-schema sync check (no
-# AsyncAPI/eventschema — this service publishes no events, LLD §10).
+# 
+API/eventschema — this service publishes no events, LLD §10).
 name: Validate / Test
 
 "on":

@@ -226,6 +226,12 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
                     "405": {
                         "description": "Method Not Allowed",
                         "schema": {
@@ -274,6 +280,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
@@ -592,8 +604,16 @@ const docTemplate = `{
                 "sso_enabled": {
                     "type": "boolean"
                 },
+                "tender_limit": {
+                    "type": "integer",
+                    "x-nullable": "true"
+                },
                 "trial_duration_days": {
                     "type": "integer"
+                },
+                "workflow_template_limit": {
+                    "type": "integer",
+                    "x-nullable": "true"
                 }
             }
         },
@@ -629,13 +649,15 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "tender_limit": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": "true"
                 },
                 "trial_duration_days": {
                     "type": "integer"
                 },
                 "workflow_template_limit": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": "true"
                 }
             }
         },
@@ -690,7 +712,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8080",
+	Host:             "localhost:8081",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "IAM Catalog / Admin Config API",

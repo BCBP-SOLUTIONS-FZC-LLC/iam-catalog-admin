@@ -32,6 +32,7 @@ TEST_INTERNAL_PKGS := ./internal/adapter/inbound/http/... \
                       ./internal/adapter/outbound/valkey/... \
                       ./internal/adapter/outbound/metrics/... \
                       ./internal/core/domain/... \
+                      ./internal/core/service/... \
                       ./pkg/...
 
 COVER_PKG_LIST := $(shell $(GO) list ./internal/... ./pkg/... 2>/dev/null | tr '\n' ',' | sed 's/,$$//')

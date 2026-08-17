@@ -103,7 +103,7 @@ func (s *DepartmentService) Patch(ctx context.Context, id uuid.UUID, name *strin
 		return nil, domain.NewError(domain.ErrNoMutableField, "at least one of name or is_active must be provided").
 			WithDetails(map[string]any{"code": "no_mutable_field"})
 	}
-	if name != nil && *name == "" {
+	if name != nil && strings.TrimSpace(*name) == "" {
 		return nil, domain.NewError(domain.ErrValidation, "name must not be empty")
 	}
 	// D-7/D-9 (system dept retirement) is blocked at the DB level by

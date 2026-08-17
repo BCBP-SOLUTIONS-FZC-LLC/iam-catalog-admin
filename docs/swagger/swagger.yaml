@@ -102,8 +102,14 @@ definitions:
         type: integer
       sso_enabled:
         type: boolean
+      tender_limit:
+        type: integer
+        x-nullable: "true"
       trial_duration_days:
         type: integer
+      workflow_template_limit:
+        type: integer
+        x-nullable: "true"
     type: object
   http.PlanResponse:
     properties:
@@ -129,10 +135,12 @@ definitions:
         type: boolean
       tender_limit:
         type: integer
+        x-nullable: "true"
       trial_duration_days:
         type: integer
       workflow_template_limit:
         type: integer
+        x-nullable: "true"
     type: object
   http.PlansListResponse:
     properties:
@@ -290,6 +298,10 @@ paths:
       produces:
       - application/json
       responses:
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "405":
           description: Method Not Allowed
           schema:
@@ -324,6 +336,10 @@ paths:
             $ref: '#/definitions/http.DepartmentResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/http.ErrorResponse'
         "404":

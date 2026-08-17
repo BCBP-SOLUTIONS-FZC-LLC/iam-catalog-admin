@@ -15,7 +15,11 @@ var migrationsFS embed.FS
 // plans, triggers, roles/grants). Uses the direct (non-PgBouncer) DSN
 // because pg_advisory_lock is session-scoped.
 func RunMigrations(ctx context.Context, dsn string) error {
-	sub, err := fs.Sub(migrationsFS, "migrations")
+	return runMigrationsFrom(ctx, migrationsFS, "migrations", dsn)
+}
+
+func runMigrationsFrom(ctx context.Context, fsys fs.FS, subPath string, dsn string) error {
+	sub, err := fs.Sub(fsys, subPath)
 	if err != nil {
 		return err
 	}

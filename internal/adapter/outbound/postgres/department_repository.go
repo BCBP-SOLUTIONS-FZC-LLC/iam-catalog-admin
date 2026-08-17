@@ -13,8 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// DepartmentRepository operates on the global departments catalog (no
-// RLS). Ported from iam-org-membership's internal/adapter/outbound/postgres/department_repository.go.
 type DepartmentRepository struct {
 	pool *pgcommon.Pool
 }
@@ -36,63 +34,79 @@ func scanDepartment(row pgx.Row) (*domain.Department, error) {
 }
 
 func (r *DepartmentRepository) List(ctx context.Context, activeOnly bool) ([]domain.Department, error) {
+	var out []domain.Department
+	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
+		var e error
+		out, e = deptListFromTx(ctx, tx, activeOnly)
+		return e
+	})
+	return out, err
+}
+
+func deptListFromTx(ctx context.Context, tx pgx.Tx, activeOnly bool) ([]domain.Department, error) {
 	sql := `SELECT ` + departmentSelectColumns + ` FROM departments`
 	if activeOnly {
 		sql += ` WHERE is_active = true`
 	}
 	sql += ` ORDER BY code`
-
+	rows, err := tx.Query(ctx, sql)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	var out []domain.Department
-	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, sql)
+	for rows.Next() {
+		d, err := scanDepartment(rows)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			d, err := scanDepartment(rows)
-			if err != nil {
-				return err
-			}
-			out = append(out, *d)
-		}
-		return rows.Err()
-	})
-	return out, err
+		out = append(out, *d)
+	}
+	return out, rows.Err()
 }
 
 func (r *DepartmentRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.Department, error) {
 	var out *domain.Department
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT `+departmentSelectColumns+` FROM departments WHERE id = $1`, id)
-		d, err := scanDepartment(row)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return domain.NewError(domain.ErrDepartmentNotFound, "department not found")
-			}
-			return err
-		}
-		out = d
-		return nil
+		var e error
+		out, e = deptFindByIDFromTx(ctx, tx, id)
+		return e
 	})
 	return out, err
+}
+
+func deptFindByIDFromTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*domain.Department, error) {
+	row := tx.QueryRow(ctx, `SELECT `+departmentSelectColumns+` FROM departments WHERE id = $1`, id)
+	d, err := scanDepartment(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.NewError(domain.ErrDepartmentNotFound, "department not found")
+		}
+		return nil, err
+	}
+	return d, nil
 }
 
 func (r *DepartmentRepository) FindByCode(ctx context.Context, code string) (*domain.Department, error) {
 	var out *domain.Department
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT `+departmentSelectColumns+` FROM departments WHERE code = $1`, code)
-		d, err := scanDepartment(row)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return domain.NewError(domain.ErrDepartmentNotFound, "department not found")
-			}
-			return err
-		}
-		out = d
-		return nil
+		var e error
+		out, e = deptFindByCodeFromTx(ctx, tx, code)
+		return e
 	})
 	return out, err
+}
+
+func deptFindByCodeFromTx(ctx context.Context, tx pgx.Tx, code string) (*domain.Department, error) {
+	row := tx.QueryRow(ctx, `SELECT `+departmentSelectColumns+` FROM departments WHERE code = $1`, code)
+	d, err := scanDepartment(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.NewError(domain.ErrDepartmentNotFound, "department not found")
+		}
+		return nil, err
+	}
+	return d, nil
 }
 
 func (r *DepartmentRepository) Insert(ctx context.Context, d *domain.Department) (*domain.Department, error) {
@@ -121,8 +135,6 @@ func (r *DepartmentRepository) Insert(ctx context.Context, d *domain.Department)
 	return out, err
 }
 
-// Update applies name and/or is_active with optimistic locking. code and
-// is_system are immutable at the DB layer (D-2/D-10 triggers).
 func (r *DepartmentRepository) Update(ctx context.Context, id uuid.UUID, name *string, isActive *bool, expectedVersion int64) (*domain.Department, error) {
 	if name == nil && isActive == nil {
 		return r.FindByID(ctx, id)
@@ -145,26 +157,31 @@ func (r *DepartmentRepository) Update(ctx context.Context, id uuid.UUID, name *s
 
 	var out *domain.Department
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, sql, args...)
-		updated, err := scanDepartment(row)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				var currentVersion int64
-				probe := tx.QueryRow(ctx, `SELECT record_version FROM departments WHERE id = $1`, id)
-				if perr := probe.Scan(&currentVersion); perr != nil {
-					if errors.Is(perr, pgx.ErrNoRows) {
-						return domain.NewError(domain.ErrDepartmentNotFound, "department not found")
-					}
-					return perr
-				}
-				return domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").WithDetails(map[string]any{
-					"record_version": currentVersion,
-				})
-			}
-			return err
-		}
-		out = updated
-		return nil
+		var e error
+		out, e = deptUpdateFromTx(ctx, tx, id, sql, args)
+		return e
 	})
 	return out, err
+}
+
+func deptUpdateFromTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, sql string, args []any) (*domain.Department, error) {
+	row := tx.QueryRow(ctx, sql, args...)
+	updated, err := scanDepartment(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			var currentVersion int64
+			probe := tx.QueryRow(ctx, `SELECT record_version FROM departments WHERE id = $1`, id)
+			if perr := probe.Scan(&currentVersion); perr != nil {
+				if errors.Is(perr, pgx.ErrNoRows) {
+					return nil, domain.NewError(domain.ErrDepartmentNotFound, "department not found")
+				}
+				return nil, perr
+			}
+			return nil, domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").WithDetails(map[string]any{
+				"record_version": currentVersion,
+			})
+		}
+		return nil, err
+	}
+	return updated, nil
 }

@@ -29,18 +29,45 @@ var (
 		},
 		[]string{"key"},
 	)
+
+	// Writes counts successful DB writes (post-commit), labelled by table
+	// (departments/plans) and op (insert/update). LLD §13.2
+	// catalog_admin_writes_total{table,op}.
+	Writes = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "catalog_admin_writes_total",
+			Help: "Successful DB writes, labelled by table (departments|plans) and op (insert|update).",
+		},
+		[]string{"table", "op"},
+	)
+
+	// OptimisticLockConflicts counts 409 optimistic_lock_conflict responses
+	// from CAT-2/CAT-5, labelled by table. LLD §13.2
+	// catalog_admin_optimistic_lock_conflicts_total{table}.
+	OptimisticLockConflicts = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "catalog_admin_optimistic_lock_conflicts_total",
+			Help: "Optimistic-lock conflict (409) count from CAT-2/CAT-5, labelled by table.",
+		},
+		[]string{"table"},
+	)
 )
 
 // Register installs this package's metrics on the default Prometheus
 // registry. Call once at startup, before /metrics is served — mirrors
 // iam-org-membership's internal/adapter/outbound/metrics/business.go.
 func Register() {
-	prometheus.MustRegister(CacheHits, CacheMisses)
-	// Pre-initialise the two known label values so dashboards show 0
-	// rather than "no data" before the first request (same rationale as
-	// O&M's business.go).
+	prometheus.MustRegister(CacheHits, CacheMisses, Writes, OptimisticLockConflicts)
+	// Pre-initialise known label combinations so dashboards show 0 rather
+	// than "no data" before the first request.
 	for _, key := range []string{"cat:departments", "cat:plans"} {
 		CacheHits.WithLabelValues(key)
 		CacheMisses.WithLabelValues(key)
 	}
+	for _, tbl := range []string{"departments", "plans"} {
+		OptimisticLockConflicts.WithLabelValues(tbl)
+	}
+	Writes.WithLabelValues("departments", "insert")
+	Writes.WithLabelValues("departments", "update")
+	Writes.WithLabelValues("plans", "update")
 }

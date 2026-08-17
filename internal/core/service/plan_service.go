@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
@@ -79,6 +80,9 @@ func (s *PlanService) Patch(ctx context.Context, code domain.TenantPlan, patch *
 		patch.FeatureSet == nil {
 		return nil, domain.NewError(domain.ErrNoMutableField, "at least one field must be provided").
 			WithDetails(map[string]any{"code": "no_mutable_field"})
+	}
+	if patch.DisplayName != nil && strings.TrimSpace(*patch.DisplayName) == "" {
+		return nil, domain.NewError(domain.ErrValidation, "display_name must not be empty")
 	}
 	if patch.WorkflowTemplateLimit != nil && *patch.WorkflowTemplateLimit != nil && **patch.WorkflowTemplateLimit < 0 {
 		return nil, domain.NewError(domain.ErrValidation, "workflow_template_limit must be >= 0")

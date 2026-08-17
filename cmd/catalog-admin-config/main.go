@@ -127,6 +127,7 @@ func main() {
 	// ── 6. Router ─────────────────────────────────────────────────────────
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
+	r.RedirectTrailingSlash = false
 
 	// Swagger UI is registered BEFORE any middleware so the timeout and
 	// observability wrappers don't interfere with its streaming response
@@ -183,6 +184,10 @@ func main() {
 	}
 
 	r.Use(func(c *gin.Context) {
+		if c.Request.ContentLength > 1<<20 {
+			c.AbortWithStatus(http.StatusRequestEntityTooLarge)
+			return
+		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 		c.Next()
 	})

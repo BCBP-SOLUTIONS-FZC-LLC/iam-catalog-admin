@@ -3,9 +3,11 @@ package http
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
 	"github.com/gin-gonic/gin"
@@ -108,6 +110,7 @@ func (h *DepartmentHandler) Create(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
+	metrics.Writes.WithLabelValues("departments", "insert").Inc()
 	c.JSON(http.StatusCreated, departmentToResponse(d))
 }
 
@@ -124,6 +127,7 @@ func (h *DepartmentHandler) Create(c *gin.Context) {
 // @Param        request  body      DepartmentPatchRequest    true  "Patch payload"
 // @Success      200      {object}  DepartmentResponse
 // @Failure      400      {object}  ErrorResponse
+// @Failure      403      {object}  ErrorResponse
 // @Failure      404      {object}  ErrorResponse
 // @Failure      409      {object}  ErrorResponse  "optimistic_lock_conflict"
 // @Failure      422      {object}  ErrorResponse  "field_immutable | system_name_immutable | system_department_cannot_be_retired"
@@ -166,9 +170,13 @@ func (h *DepartmentHandler) Patch(c *gin.Context) {
 	}
 	d, err := h.svc.Patch(c.Request.Context(), id, req.Name, req.IsActive, req.RecordVersion)
 	if err != nil {
+		if errors.Is(err, domain.ErrOptimisticLockConflict) {
+			metrics.OptimisticLockConflicts.WithLabelValues("departments").Inc()
+		}
 		HandleError(c, err)
 		return
 	}
+	metrics.Writes.WithLabelValues("departments", "update").Inc()
 	c.JSON(http.StatusOK, departmentToResponse(d))
 }
 
@@ -180,6 +188,7 @@ func (h *DepartmentHandler) Patch(c *gin.Context) {
 // @Tags         operator
 // @Produce      json
 // @Param        id   path  string  true  "Department UUID"  format(uuid)
+// @Failure      403  {object}  ErrorResponse
 // @Failure      405  {object}  ErrorResponse
 // @Router       /operator/departments/{id} [delete]
 func (h *DepartmentHandler) DeleteBlocked(c *gin.Context) {

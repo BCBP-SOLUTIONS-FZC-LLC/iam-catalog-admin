@@ -66,8 +66,8 @@ type InternalDepartmentsResponse struct {
 type PlanResponse struct {
 	Code                  string         `json:"code" enums:"starter,pro,enterprise"`
 	DisplayName           string         `json:"display_name"`
-	WorkflowTemplateLimit *int           `json:"workflow_template_limit"`
-	TenderLimit           *int           `json:"tender_limit"`
+	WorkflowTemplateLimit *int           `json:"workflow_template_limit" extensions:"x-nullable=true"`
+	TenderLimit           *int           `json:"tender_limit" extensions:"x-nullable=true"`
 	TrialDurationDays     int            `json:"trial_duration_days"`
 	SSOEnabled            bool           `json:"sso_enabled"`
 	CustomBranding        string         `json:"custom_branding" enums:"none,logo"`
@@ -81,15 +81,19 @@ type PlansListResponse struct {
 }
 
 // PlanPatchRequest is CAT-5's request body. WorkflowTemplateLimit/TenderLimit
-// use json.RawMessage at the handler layer (not here) to distinguish
-// absent/null/value — see plan_handler.go's parseLimit.
+// are nullable integers: omit the field entirely to leave it unchanged, send
+// null to set it to unlimited, or send an integer >= 0 to set a cap.
+// The handler parses these via json.RawMessage (plan_handler.go's parseLimit)
+// to distinguish the three states; this struct is the Swagger-doc shape only.
 type PlanPatchRequest struct {
-	DisplayName       *string        `json:"display_name,omitempty"`
-	TrialDurationDays *int           `json:"trial_duration_days,omitempty"`
-	SSOEnabled        *bool          `json:"sso_enabled,omitempty"`
-	CustomBranding    *string        `json:"custom_branding,omitempty" enums:"none,logo"`
-	FeatureSet        map[string]any `json:"feature_set,omitempty"`
-	RecordVersion     int64          `json:"record_version"`
+	DisplayName           *string        `json:"display_name,omitempty"`
+	WorkflowTemplateLimit *int           `json:"workflow_template_limit,omitempty" extensions:"x-nullable=true"`
+	TenderLimit           *int           `json:"tender_limit,omitempty" extensions:"x-nullable=true"`
+	TrialDurationDays     *int           `json:"trial_duration_days,omitempty"`
+	SSOEnabled            *bool          `json:"sso_enabled,omitempty"`
+	CustomBranding        *string        `json:"custom_branding,omitempty" enums:"none,logo"`
+	FeatureSet            map[string]any `json:"feature_set,omitempty"`
+	RecordVersion         int64          `json:"record_version"`
 }
 
 // InternalPlansResponse is CAT-I2's bulk-read response shape (LLD §7.2).

@@ -2,8 +2,10 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
 	"github.com/gin-gonic/gin"
@@ -161,8 +163,12 @@ func (h *PlanHandler) Patch(c *gin.Context) {
 	}
 	p, err := h.svc.Patch(c.Request.Context(), code, patch)
 	if err != nil {
+		if errors.Is(err, domain.ErrOptimisticLockConflict) {
+			metrics.OptimisticLockConflicts.WithLabelValues("plans").Inc()
+		}
 		HandleError(c, err)
 		return
 	}
+	metrics.Writes.WithLabelValues("plans", "update").Inc()
 	c.JSON(http.StatusOK, planToResponse(p))
 }

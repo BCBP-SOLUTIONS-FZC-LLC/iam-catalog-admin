@@ -12,7 +12,7 @@
         },
         "version": "1.0"
     },
-    "host": "localhost:8080",
+    "host": "localhost:8081",
     "basePath": "/api/v1",
     "paths": {
         "/departments": {
@@ -205,6 +205,12 @@
                     }
                 ],
                 "responses": {
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
                     "405": {
                         "description": "Method Not Allowed",
                         "schema": {
@@ -253,6 +259,12 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/http.ErrorResponse"
                         }
@@ -571,8 +583,16 @@
                 "sso_enabled": {
                     "type": "boolean"
                 },
+                "tender_limit": {
+                    "type": "integer",
+                    "x-nullable": "true"
+                },
                 "trial_duration_days": {
                     "type": "integer"
+                },
+                "workflow_template_limit": {
+                    "type": "integer",
+                    "x-nullable": "true"
                 }
             }
         },
@@ -608,13 +628,15 @@
                     "type": "boolean"
                 },
                 "tender_limit": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": "true"
                 },
                 "trial_duration_days": {
                     "type": "integer"
                 },
                 "workflow_template_limit": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": "true"
                 }
             }
         },

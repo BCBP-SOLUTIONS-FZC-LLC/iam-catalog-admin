@@ -23,24 +23,31 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	httpadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/inbound/http"
+	catmetrics "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
 	pgadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/postgres"
 	valkeyadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/valkey"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/gincommon"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
 )
+
+// registerMetricsOnce ensures catmetrics.Register() (prometheus.MustRegister)
+// is called exactly once per test binary run — re-registering panics.
+var registerMetricsOnce sync.Once
 
 // e2eEnv bundles a fully wired stack + a live httptest.Server so tests can
 // issue real HTTP requests.
@@ -86,7 +93,12 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
+	r.RedirectTrailingSlash = false
 	r.Use(func(c *gin.Context) {
+		if c.Request.ContentLength > 1<<20 {
+			c.AbortWithStatus(http.StatusRequestEntityTooLarge)
+			return
+		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 		c.Next()
 	})
@@ -94,6 +106,11 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	cfg := gincommon.Config{ServiceName: "iam-catalog-admin-e2e"}
 	r.Use(gincommon.ObservabilityMiddlewares(cfg)...)
 	r.Use(httpadapter.NormalizeAuthErrors())
+
+	// Register catadmin_* Prometheus counters once per binary run (MustRegister
+	// panics on re-registration) and expose /metrics — mirrors main.go.
+	registerMetricsOnce.Do(catmetrics.Register)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	r.GET("/healthz", gincommon.HealthHandler())
 	r.GET("/readyz", func(c *gin.Context) {
