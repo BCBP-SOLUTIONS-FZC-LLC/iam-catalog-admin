@@ -20,7 +20,7 @@ graph TD
         http["inbound/http/\nGin handlers · DTOs · middleware\nerror-model translation"]
         pg["outbound/postgres/\nrepositories · migrations\nRunMigrations"]
         valkey["outbound/valkey/\nCache implementation"]
-        metrics["outbound/metrics/\ncatadmin_* Prometheus counters"]
+        metrics["outbound/metrics/\ncatalog_admin_* Prometheus counters"]
     end
 
     main --> http
@@ -287,11 +287,16 @@ table and `O_AND_M_DELTA.md` for the O&M-side integration contract.
 
 ## Observability
 
-- **Metrics** — `catadmin_cache_hits_total{key}` / `catadmin_cache_misses_total{key}`
+- **Metrics** — `catalog_admin_requests_total{route,status}` /
+  `catalog_admin_request_duration_seconds{route,quantile}` (LLD §13.2's own business-level request
+  rollup, recorded by `requestMetricsMiddleware`), `catalog_admin_writes_total{table,op}`,
+  `catalog_admin_optimistic_lock_conflicts_total{table}` (feeds the §13.5 alert),
+  `catalog_admin_cache_hits_total{key}` / `catalog_admin_cache_misses_total{key}`
   (`internal/adapter/outbound/metrics`), plus the generic per-route HTTP metrics
-  `platform-gincommon` registers for free. Deliberately prefixed `catadmin_`, not `iam_`, so this
-  service's metrics never collide with `iam-org-membership`'s if both are scraped by the same
-  Prometheus.
+  (`http_requests_total`/`http_request_duration_seconds`) `platform-gincommon` registers for free.
+  Prefixed `catalog_admin_`, matching the fleet's `{service-name}_*` convention (e.g.
+  `iam-tender-acl`'s `tender_acl_*`) — distinguished from siblings by Prometheus scrape target/job
+  label, not by name, the same way the generic `http_*` metrics already are.
 - **Tracing** — OTel, opt-in (`OTEL_EXPORTER_OTLP_ENDPOINT`), no-op otherwise.
 - **Logs** — structured (Zap), via `platform-gincommon/pkg/logger`.
 - **Dashboards worth building** (LLD §13): request rate/latency per endpoint, `cat:departments`/

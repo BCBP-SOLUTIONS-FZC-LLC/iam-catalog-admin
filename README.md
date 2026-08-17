@@ -67,7 +67,7 @@ internal/core/service/               DepartmentService, PlanService — business
 internal/adapter/inbound/http/       Gin handlers, DTOs, middleware, error model
 internal/adapter/outbound/postgres/  repositories + migrations
 internal/adapter/outbound/valkey/    Cache implementation
-internal/adapter/outbound/metrics/   Prometheus (catadmin_* prefix)
+internal/adapter/outbound/metrics/   Prometheus (catalog_admin_* prefix)
 pkg/requestctx/                      gateway-identity → role-check helper
 ```
 
@@ -197,8 +197,10 @@ The service will not start without the variables marked **required**
 |---|---|---|---|
 | `APP_ENV` | `production` | `dev` | `dev` relaxes prod-only checks (e.g. `rediss://` requirement) |
 | `APP_NAME` | `catalog-admin-config` | `catalog-admin-config` | Prometheus label, OTel service name |
-| `APP_PORT` | `8081` | `8081` | HTTP listen port |
+| `APP_PORT` | `8081` | `8081` | HTTP listen port (API) |
+| `METRICS_PORT` | `9090` | `9090` | `/metrics` listen port — a separate `http.Server` from `APP_PORT`, so a NetworkPolicy can grant Prometheus scrape access without also granting API access |
 | `BUILD_VERSION` | `v1.0.0-abc123` | `dev` | CI-injected build tag |
+| `CATALOG_TTL_SECONDS` | `60` | `60` | `cat:departments`/`cat:plans` cache TTL (LLD §8/§15) |
 | `DATABASE_URL` | `postgres://...` | — | Full DSN; overrides individual `PG_*` vars. **Required** unless `PG_HOST`+`PG_USER`+`PG_PASSWORD` are all set |
 | `PG_HOST`/`PG_PORT`/`PG_USER`/`PG_PASSWORD`/`PG_DBNAME`/`PG_SSLMODE` | — | `localhost`/`5432`/—/—/`catalog_admin`/`require` | DSN parts, used when `DATABASE_URL` is unset |
 | `PG_MAX_CONNS`/`PG_MIN_CONNS` | `10`/`0` | `10`/`0` | Pool sizing |
@@ -220,9 +222,14 @@ The service will not start without the variables marked **required**
 
 ## Observability
 
-- **Metrics** (`catadmin_*` prefix, deliberately distinct from `iam-org-membership`'s `iam_*`):
-  `catadmin_cache_hits_total{key}` / `catadmin_cache_misses_total{key}`, plus the generic HTTP
-  request metrics `platform-gincommon` registers automatically for every route.
+- **Metrics** (`catalog_admin_*` prefix, matching the fleet's `{service-name}_*` convention, e.g.
+  `iam-tender-acl`'s `tender_acl_*`): `catalog_admin_requests_total{route,status}` /
+  `catalog_admin_request_duration_seconds{route,quantile}` (this service's own business-level
+  request rollup, LLD §13.2), `catalog_admin_writes_total{table,op}`,
+  `catalog_admin_optimistic_lock_conflicts_total{table}` (feeds the §13.5 alert),
+  `catalog_admin_cache_hits_total{key}` / `catalog_admin_cache_misses_total{key}`, plus the generic
+  HTTP request metrics (`http_requests_total`/`http_request_duration_seconds`) `platform-gincommon`
+  registers automatically for every route.
 - **Tracing**: OTel, opt-in via `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - **Logs**: structured (Zap) via `platform-gincommon/pkg/logger`.
 - **Health**: `/healthz` (always 200), `/readyz` (fails if Postgres or Valkey is down).

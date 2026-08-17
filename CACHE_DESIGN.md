@@ -23,8 +23,8 @@ cache-fronted — they go straight to Postgres. The LLD's own cache table (§8) 
 whole-catalog keys; there was no whole-catalog-plus-per-row caching requirement to satisfy, and
 skipping it keeps the cache invalidation logic simple (one key to evict per table, not N+1).
 
-Cache hit/miss is recorded per key via `internal/adapter/outbound/metrics` (`catadmin_cache_hits_total`,
-`catadmin_cache_misses_total`), instrumented at the Valkey adapter layer
+Cache hit/miss is recorded per key via `internal/adapter/outbound/metrics` (`catalog_admin_cache_hits_total`,
+`catalog_admin_cache_misses_total`), instrumented at the Valkey adapter layer
 (`internal/adapter/outbound/valkey/cache.go`) rather than in the core service layer, so the
 hexagonal boundary (`core/service` → `port.Cache`, no adapter imports) stays intact.
 
