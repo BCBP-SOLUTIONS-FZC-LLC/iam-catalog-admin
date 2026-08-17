@@ -1,12 +1,9 @@
 package postgres
 
 import (
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func withEnv(t *testing.T, kv map[string]string) {
@@ -16,38 +13,35 @@ func withEnv(t *testing.T, kv map[string]string) {
 	}
 }
 
-func TestDSNFromEnv_PrefersDatabaseURL(t *testing.T) {
-	withEnv(t, map[string]string{"DATABASE_URL": "postgres://explicit"})
-	assert.Equal(t, "postgres://explicit", DSNFromEnv())
+func TestApplyStatementTimeout_NoopWhenUnset(t *testing.T) {
+	t.Setenv("PG_STATEMENT_TIMEOUT", "")
+	assert.Equal(t, "postgres://x", ApplyStatementTimeout("postgres://x"))
 }
 
-func TestDSNFromEnv_BuildsFromParts(t *testing.T) {
-	os.Unsetenv("DATABASE_URL")
-	withEnv(t, map[string]string{
-		"PG_HOST": "db.internal", "PG_PORT": "5432", "PG_USER": "app", "PG_PASSWORD": "secret",
-		"PG_DBNAME": "catalog_admin", "PG_SSLMODE": "disable",
-	})
-	dsn := DSNFromEnv()
-	require.Contains(t, dsn, "db.internal:5432")
-	require.Contains(t, dsn, "catalog_admin")
-	require.True(t, strings.Contains(dsn, "sslmode=disable"))
+func TestApplyStatementTimeout_AppendsWhenSet(t *testing.T) {
+	withEnv(t, map[string]string{"PG_STATEMENT_TIMEOUT": "5s"})
+	dsn := ApplyStatementTimeout("postgres://x")
+	assert.Contains(t, dsn, "postgres://x")
+	assert.Contains(t, dsn, "statement_timeout")
+	assert.Contains(t, dsn, "5000") // 5s in milliseconds
 }
 
-func TestDSNFromEnv_StatementTimeout(t *testing.T) {
-	os.Unsetenv("DATABASE_URL")
-	withEnv(t, map[string]string{
-		"PG_HOST": "localhost", "PG_USER": "app", "PG_PASSWORD": "secret",
-		"PG_STATEMENT_TIMEOUT": "5s",
-	})
-	dsn := DSNFromEnv()
-	require.Contains(t, dsn, "statement_timeout")
+func TestApplyStatementTimeout_IgnoresInvalidDuration(t *testing.T) {
+	withEnv(t, map[string]string{"PG_STATEMENT_TIMEOUT": "not-a-duration"})
+	assert.Equal(t, "postgres://x", ApplyStatementTimeout("postgres://x"))
 }
 
-func TestMigrationDSNFromEnv_FallsBackToDSNFromEnv(t *testing.T) {
-	os.Unsetenv("MIGRATION_DATABASE_URL")
-	withEnv(t, map[string]string{"DATABASE_URL": "postgres://app-dsn"})
-	assert.Equal(t, "postgres://app-dsn", MigrationDSNFromEnv())
+func TestApplyStatementTimeout_IgnoresNonPositiveDuration(t *testing.T) {
+	withEnv(t, map[string]string{"PG_STATEMENT_TIMEOUT": "0s"})
+	assert.Equal(t, "postgres://x", ApplyStatementTimeout("postgres://x"))
+}
 
+func TestMigrationDSNFromEnv_FallsBackToAppDSN(t *testing.T) {
+	t.Setenv("MIGRATION_DATABASE_URL", "")
+	assert.Equal(t, "postgres://app-dsn", MigrationDSNFromEnv("postgres://app-dsn"))
+}
+
+func TestMigrationDSNFromEnv_PrefersExplicitMigrationURL(t *testing.T) {
 	withEnv(t, map[string]string{"MIGRATION_DATABASE_URL": "postgres://migration-dsn"})
-	assert.Equal(t, "postgres://migration-dsn", MigrationDSNFromEnv())
+	assert.Equal(t, "postgres://migration-dsn", MigrationDSNFromEnv("postgres://app-dsn"))
 }
