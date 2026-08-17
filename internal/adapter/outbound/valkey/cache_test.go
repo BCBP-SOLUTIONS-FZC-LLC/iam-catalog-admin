@@ -1,8 +1,10 @@
 package valkey
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"testing"
 	"time"
 
@@ -59,6 +61,64 @@ func TestNew_FallsBackToPlainAddrOnParseError(t *testing.T) {
 	c := New("localhost:6379")
 	require.NotNil(t, c)
 	require.NotNil(t, c.client)
+}
+
+// TestCache_Delete_FailureIsLogged verifies LLD §11.1's failure-matrix
+// entry ("A CAT-1/CAT-2 write succeeds but the local cache DEL fails" →
+// "Logged error, post-commit"): a Delete failure must be observable in
+// logs, not silently discarded, even though it's still advisory and never
+// fails the caller.
+func TestCache_Delete_FailureIsLogged(t *testing.T) {
+	mr := miniredis.RunT(t)
+	addr := mr.Addr()
+	mr.Close()
+	c := New("redis://" + addr)
+
+	var buf bytes.Buffer
+	origOutput := log.Writer()
+	origFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(origOutput)
+		log.SetFlags(origFlags)
+	}()
+
+	err := c.Delete(context.Background(), DepartmentsKey)
+	require.Error(t, err, "Delete still returns the error — only the caller in the service layer swallows it")
+	assert.Contains(t, buf.String(), "cache invalidation failed")
+	assert.Contains(t, buf.String(), DepartmentsKey)
+}
+
+// fakeLogger captures Error() calls so tests can assert on structured
+// logging without depending on platform-gincommon's concrete Zap logger.
+type fakeLogger struct {
+	msg    string
+	fields map[string]interface{}
+}
+
+func (f *fakeLogger) Error(msg string, fields map[string]interface{}) {
+	f.msg = msg
+	f.fields = fields
+}
+
+// TestCache_Delete_FailureUsesStructuredLoggerWhenSet verifies the same
+// failure logs through SetLogger's structured logger once installed,
+// instead of stdlib log.Printf — production-readiness fix.
+func TestCache_Delete_FailureUsesStructuredLoggerWhenSet(t *testing.T) {
+	mr := miniredis.RunT(t)
+	addr := mr.Addr()
+	mr.Close()
+	c := New("redis://" + addr)
+
+	fl := &fakeLogger{}
+	SetLogger(fl)
+	t.Cleanup(func() { SetLogger(nil) })
+
+	err := c.Delete(context.Background(), DepartmentsKey)
+	require.Error(t, err)
+	assert.Equal(t, "cache invalidation failed", fl.msg)
+	assert.Equal(t, []string{DepartmentsKey}, fl.fields["keys"])
 }
 
 func TestCache_Get_TransportErrorIsNotSwallowed(t *testing.T) {

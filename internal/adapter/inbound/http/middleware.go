@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -21,6 +22,24 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// Logger is the minimal structured-logging capability this package needs —
+// satisfied structurally by platform-gincommon/pkg/logger's port.Logger
+// (an internal type, so this package declares its own duck-typed interface
+// rather than importing it directly).
+type Logger interface {
+	Error(msg string, fields map[string]interface{})
+}
+
+// pkgLogger is nil until SetLogger is called (e.g. from main.go); nil means
+// "fall back to stdlib log" so package tests that never call SetLogger
+// still see output somewhere instead of silently discarding it.
+var pkgLogger Logger
+
+// SetLogger installs the structured logger used by this package's own
+// error logging (currently just HandleError's unhandled-500 fallback
+// branch). Call once at startup, mirroring metrics.Register()'s idiom.
+func SetLogger(l Logger) { pkgLogger = l }
 
 // IdentityBridgeMiddleware runs after gincommon.ProtectedMiddlewares. It
 // parses the gateway-injected identity into typed uuid.UUID values and
@@ -194,7 +213,18 @@ func HandleError(c *gin.Context, err error) {
 			return
 		}
 	}
-	log.Printf("[DEBUG] unhandled 500 error type=%T value=%v", err, err)
+	if pkgLogger != nil {
+		fields := map[string]interface{}{"error_type": fmt.Sprintf("%T", err), "error": err.Error()}
+		if rid := gincommon.RequestIDFromContext(c); rid != "" {
+			fields["request_id"] = rid
+		}
+		if tid := gincommon.TraceIDFromContext(c); tid != "" {
+			fields["trace_id"] = tid
+		}
+		pkgLogger.Error("unhandled 500 error", fields)
+	} else {
+		log.Printf("[DEBUG] unhandled 500 error type=%T value=%v", err, err)
+	}
 	er := newErrorResponse(c, "internal_error", "an unexpected error occurred", nil)
 	er.Status = http.StatusInternalServerError
 	c.AbortWithStatusJSON(http.StatusInternalServerError, er)

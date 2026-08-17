@@ -95,6 +95,42 @@ func TestHandleError_GenericFallback(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
+// fakeLogger captures Error() calls so tests can assert on structured
+// logging without depending on platform-gincommon's concrete Zap logger.
+type fakeLogger struct {
+	msg    string
+	fields map[string]interface{}
+}
+
+func (f *fakeLogger) Error(msg string, fields map[string]interface{}) {
+	f.msg = msg
+	f.fields = fields
+}
+
+// TestHandleError_GenericFallback_UsesStructuredLoggerWhenSet verifies the
+// unhandled-500 branch routes through SetLogger's structured logger
+// (carrying request_id/trace_id) rather than the stdlib log.Printf
+// fallback, once a logger has been installed — production-readiness fix:
+// this path previously always used log.Printf, unstructured and without
+// trace correlation.
+func TestHandleError_GenericFallback_UsesStructuredLoggerWhenSet(t *testing.T) {
+	fl := &fakeLogger{}
+	SetLogger(fl)
+	t.Cleanup(func() { SetLogger(nil) })
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	HandleError(c, errors.New("boom"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "unhandled 500 error", fl.msg)
+	assert.Equal(t, "boom", fl.fields["error"])
+	assert.Contains(t, fl.fields["error_type"], "errors.errorString")
+}
+
 func TestHandleError_DomainErrorMapping(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
