@@ -10,7 +10,7 @@ metadata:
     {{- end }}
 spec:
   groups:
-    - name: catadmin_availability
+    - name: catalog_admin_availability
       rules:
         - alert: IAMCatalogAdminDown
           expr: |
@@ -41,7 +41,7 @@ spec:
               Fewer than 2 replicas are healthy. Current healthy count: {{ "{{ $value }}" }}.
               A further disruption would take the service to zero.
 
-    - name: catadmin_errors
+    - name: catalog_admin_errors
       rules:
         - alert: IAMCatalogAdminHighErrorRate
           expr: |
@@ -80,7 +80,31 @@ spec:
               CAT-I1/CAT-I2 consumer (Core, Group Mapping) degrades to a stale-if-error
               cache read while this service is down.
 
-    - name: catadmin_latency
+        # LLD §13.5: "CAT-I1/CAT-I2 error rate > 10% over 5 minutes" (SEV-2)
+        # — distinct from the two all-route alerts above, which don't
+        # isolate the internal/bulk-read routes Core and Group Mapping
+        # depend on for cache population. Uses catalog_admin_requests_total
+        # (§13.2's own route+exact-status metric), not the generic
+        # http_requests_total the other alerts in this group use.
+        - alert: IAMCatalogAdminInternalErrorRate
+          expr: |
+            sum(rate(catalog_admin_requests_total{job={{ include "iam-catalog-admin.fullname" . | quote }}, route=~"/api/v1/internal/.*", status=~"5.."}[5m]))
+              /
+            sum(rate(catalog_admin_requests_total{job={{ include "iam-catalog-admin.fullname" . | quote }}, route=~"/api/v1/internal/.*"}[5m]))
+            > 0.10
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: iam-catalog-admin CAT-I1/CAT-I2 error rate above 10%
+            description: >-
+              {{ "{{ $value | humanizePercentage }}" }} of CAT-I1 (bulk departments)/CAT-I2
+              (bulk plans) calls are erroring over the last 5 minutes (LLD §13.5, SEV-2).
+              Every consumer's cache-population path (Core, Group Mapping) is degraded
+              simultaneously — investigate immediately, not just this service's own health.
+
+    - name: catalog_admin_latency
       rules:
         # LLD §13.1's tightest SLOs are 15ms/40ms p99 (cache hit/miss reads)
         # and 100ms p99 (writes) — these are proposed, unconfirmed figures
@@ -104,7 +128,7 @@ spec:
               The p99 request duration is {{ "{{ $value | humanizeDuration }}" }}, well above
               the 100ms p99 write / 40ms p99 read SLOs (LLD §13.1). Check slow-query
               logs (PG_SLOW_QUERY_THRESHOLD) and the cat:departments/cat:plans cache
-              hit ratio (catadmin_cache_hits_total / catadmin_cache_misses_total).
+              hit ratio (catalog_admin_cache_hits_total / catalog_admin_cache_misses_total).
 
         - alert: IAMCatalogAdminCriticalLatency
           expr: |
@@ -124,4 +148,25 @@ spec:
               single-row read/write service with no downstream synchronous calls
               (LLD §4), this points at Postgres or Valkey degradation, not this
               service's own logic.
+
+    - name: catalog_admin_writes
+      rules:
+        # LLD §13.5: "Optimistic-lock-conflict rate on CAT-2/CAT-5 sustained
+        # > 0 for > 15 minutes" — writes are rare enough (§1) that ANY
+        # sustained nonzero rate is itself diagnostic of a caller retry-storm
+        # or tooling bug, not expected in steady state.
+        - alert: IAMCatalogAdminOptimisticLockConflicts
+          expr: |
+            sum(rate(catalog_admin_optimistic_lock_conflicts_total{job={{ include "iam-catalog-admin.fullname" . | quote }}}[5m])) by (table) > 0
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: iam-catalog-admin sustained optimistic-lock conflicts on {{ "{{ $labels.table }}" }}
+            description: >-
+              CAT-2/CAT-5 writes to {{ "{{ $labels.table }}" }} have been hitting
+              409 optimistic_lock_conflict for over 15 minutes. Writes are rare enough
+              (LLD §1) that a sustained rate points at a caller retry-storm or tooling
+              bug, not expected contention.
 {{- end }}
