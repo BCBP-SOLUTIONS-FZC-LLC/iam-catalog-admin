@@ -21,10 +21,10 @@ package e2e_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
@@ -41,6 +41,13 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/gincommon"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
 )
+
+// pingerFunc adapts a plain func to httpadapter.Pinger, mirroring
+// cmd/catalog-admin-config/main.go's own adapter (pool.Health returns a
+// struct, not an error).
+type pingerFunc func(ctx context.Context) error
+
+func (f pingerFunc) Health(ctx context.Context) error { return f(ctx) }
 
 // e2eEnv bundles a fully wired stack + a live httptest.Server so tests can
 // issue real HTTP requests.
@@ -81,58 +88,28 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	planH := httpadapter.NewPlanHandler(planSvc)
 	internalH := httpadapter.NewInternalHandler(deptSvc, planSvc)
 
-	// Router — mirrors cmd/catalog-admin-config/main.go route registration
-	// exactly (LLD §6/§7/§9).
+	// Router — same NewRouter cmd/catalog-admin-config/main.go calls, so
+	// this harness can never drift from the production route table
+	// (LLD §6/§7/§9).
 	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.HandleMethodNotAllowed = true
-	r.Use(func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
-		c.Next()
-	})
-	r.Use(gincommon.TimeoutMiddleware(30 * time.Second))
 	cfg := gincommon.Config{ServiceName: "iam-catalog-admin-e2e"}
-	r.Use(gincommon.ObservabilityMiddlewares(cfg)...)
-	r.Use(httpadapter.NormalizeAuthErrors())
+	router := httpadapter.NewRouter(httpadapter.RouterConfig{
+		GinConfig: cfg,
 
-	r.GET("/healthz", gincommon.HealthHandler())
-	r.GET("/readyz", func(c *gin.Context) {
-		hs := pool.Health(c.Request.Context())
-		if !hs.Healthy {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "database": "down"})
-			return
-		}
-		if err := cache.Health(c.Request.Context()); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "cache": "down"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+		DepartmentHandler: deptH,
+		PlanHandler:       planH,
+		InternalHandler:   internalH,
+
+		Postgres: pingerFunc(func(ctx context.Context) error {
+			if hs := pool.Health(ctx); !hs.Healthy {
+				return fmt.Errorf("database not healthy")
+			}
+			return nil
+		}),
+		Cache: cache,
 	})
 
-	protected := append(
-		gincommon.ProtectedMiddlewares(cfg),
-		httpadapter.IdentityBridgeMiddleware(),
-		httpadapter.RequireJSONContentType(),
-	)
-	v1 := r.Group("/api/v1", protected...)
-	{
-		v1.GET("/departments", deptH.List)
-		v1.GET("/departments/:id", deptH.Get)
-
-		op := v1.Group("/operator", httpadapter.RequireOperatorRole())
-		op.POST("/departments", deptH.Create)
-		op.PATCH("/departments/:id", deptH.Patch)
-		op.DELETE("/departments/:id", deptH.DeleteBlocked)
-		op.GET("/plans", planH.List)
-		op.GET("/plans/:code", planH.Get)
-		op.PATCH("/plans/:code", planH.Patch)
-
-		internal := v1.Group("/internal", httpadapter.RequireSystemRole())
-		internal.GET("/departments", internalH.Departments)
-		internal.GET("/plans", internalH.Plans)
-	}
-
-	server := httptest.NewServer(r)
+	server := httptest.NewServer(router.Handler())
 	t.Cleanup(server.Close)
 
 	return &e2eEnv{ctx: ctx, pool: pool, rawPool: rawPool, cache: cache, server: server, baseURL: server.URL}
