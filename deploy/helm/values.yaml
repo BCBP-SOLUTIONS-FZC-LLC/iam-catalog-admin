@@ -43,6 +43,7 @@ env:
   APP_ENV: prod
   APP_PORT: "8081"
   APP_NAME: catalog-admin-config
+  CATALOG_TTL_SECONDS: "60" # LLD §15/§8 — cat:departments/cat:plans TTL
   PG_SSLMODE: require
   PG_MAX_CONNS: "10" # LLD §15 — "sized for a read-heavy, write-rare workload"
   PG_MIN_CONNS: "0"

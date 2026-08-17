@@ -11,23 +11,34 @@ import (
 	"github.com/google/uuid"
 )
 
-// departmentsCacheTTL is LLD §8's cat:departments TTL — short because this
-// service's own DB is the true source; the cache mainly shields read
-// replicas from GET /api/v1/departments traffic, not a freshness
-// guarantee for consumers (those get their own longer-TTL om:departments
-// key, populated from CAT-I1, per §8).
-const departmentsCacheTTL = 60 * time.Second
+// defaultDepartmentsCacheTTL is LLD §8's cat:departments TTL default — short
+// because this service's own DB is the true source; the cache mainly
+// shields read replicas from GET /api/v1/departments traffic, not a
+// freshness guarantee for consumers (those get their own longer-TTL
+// om:departments key, populated from CAT-I1, per §8). Externalized via
+// CATALOG_TTL_SECONDS (LLD §15) — see WithCacheTTL.
+const defaultDepartmentsCacheTTL = 60 * time.Second
 
 // DepartmentService implements CAT-1, CAT-2, CAT-3, CAT-6, CAT-7, and the
 // listing half of CAT-I1. Every write method assumes the handler-layer
 // platform_operator gate (LLD §9) has already run.
 type DepartmentService struct {
-	repo  port.DepartmentRepository
-	cache port.Cache
+	repo     port.DepartmentRepository
+	cache    port.Cache
+	cacheTTL time.Duration
 }
 
 func NewDepartmentService(repo port.DepartmentRepository, cache port.Cache) *DepartmentService {
-	return &DepartmentService{repo: repo, cache: cache}
+	return &DepartmentService{repo: repo, cache: cache, cacheTTL: defaultDepartmentsCacheTTL}
+}
+
+// WithCacheTTL overrides the cat:departments TTL (default 60s, see
+// defaultDepartmentsCacheTTL). Ignored if d <= 0.
+func (s *DepartmentService) WithCacheTTL(d time.Duration) *DepartmentService {
+	if d > 0 {
+		s.cacheTTL = d
+	}
+	return s
 }
 
 // List serves CAT-6 (public) and CAT-I1 (internal bulk, activeOnly=false).
@@ -66,7 +77,7 @@ func (s *DepartmentService) listAllCached(ctx context.Context) ([]domain.Departm
 	}
 	if s.cache != nil {
 		if raw, jerr := json.Marshal(all); jerr == nil {
-			_ = s.cache.Set(ctx, "cat:departments", raw, departmentsCacheTTL)
+			_ = s.cache.Set(ctx, "cat:departments", raw, s.cacheTTL)
 		}
 	}
 	return all, nil

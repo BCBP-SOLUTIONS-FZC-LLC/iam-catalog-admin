@@ -9,8 +9,9 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
 )
 
-// plansCacheTTL is LLD §8's cat:plans TTL.
-const plansCacheTTL = 60 * time.Second
+// defaultPlansCacheTTL is LLD §8's cat:plans TTL default. Externalized via
+// CATALOG_TTL_SECONDS (LLD §15) — see WithCacheTTL.
+const defaultPlansCacheTTL = 60 * time.Second
 
 // PlanService implements CAT-4, CAT-5, and the listing half of CAT-I2.
 // Every write method assumes the handler-layer platform_operator gate
@@ -19,12 +20,22 @@ const plansCacheTTL = 60 * time.Second
 // "effective" value — that merge happens exclusively in Core at I-8 read
 // time (LLD §5.3, PLAN-6). This service owns the baseline only.
 type PlanService struct {
-	repo  port.PlanRepository
-	cache port.Cache
+	repo     port.PlanRepository
+	cache    port.Cache
+	cacheTTL time.Duration
 }
 
 func NewPlanService(repo port.PlanRepository, cache port.Cache) *PlanService {
-	return &PlanService{repo: repo, cache: cache}
+	return &PlanService{repo: repo, cache: cache, cacheTTL: defaultPlansCacheTTL}
+}
+
+// WithCacheTTL overrides the cat:plans TTL (default 60s, see
+// defaultPlansCacheTTL). Ignored if d <= 0.
+func (s *PlanService) WithCacheTTL(d time.Duration) *PlanService {
+	if d > 0 {
+		s.cacheTTL = d
+	}
+	return s
 }
 
 // List serves CAT-4 (operator list) and CAT-I2 (internal bulk). The full
@@ -44,7 +55,7 @@ func (s *PlanService) List(ctx context.Context) ([]domain.Plan, error) {
 	}
 	if s.cache != nil {
 		if raw, jerr := json.Marshal(all); jerr == nil {
-			_ = s.cache.Set(ctx, "cat:plans", raw, plansCacheTTL)
+			_ = s.cache.Set(ctx, "cat:plans", raw, s.cacheTTL)
 		}
 	}
 	return all, nil
