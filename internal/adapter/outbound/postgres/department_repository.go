@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	catmetrics "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // DepartmentRepository operates on the global departments catalog (no
@@ -108,14 +108,14 @@ func (r *DepartmentRepository) Insert(ctx context.Context, d *domain.Department)
 			d.ID, d.Code, d.Name, d.IsSystem, d.IsActive)
 		created, scanErr := scanDepartment(row)
 		if scanErr != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(scanErr, &pgErr) && pgErr.Code == "23505" {
+			if pgcommon.IsUniqueViolation(scanErr) {
 				return domain.NewError(domain.ErrConflict, "department code already exists").
 					WithDetails(map[string]any{"code": "duplicate_code"})
 			}
 			return scanErr
 		}
 		out = created
+		catmetrics.WritesTotal.WithLabelValues("departments", "insert").Inc()
 		return nil
 	})
 	return out, err
@@ -157,6 +157,7 @@ func (r *DepartmentRepository) Update(ctx context.Context, id uuid.UUID, name *s
 					}
 					return perr
 				}
+				catmetrics.OptimisticLockConflicts.WithLabelValues("departments").Inc()
 				return domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").WithDetails(map[string]any{
 					"record_version": currentVersion,
 				})
@@ -164,6 +165,7 @@ func (r *DepartmentRepository) Update(ctx context.Context, id uuid.UUID, name *s
 			return err
 		}
 		out = updated
+		catmetrics.WritesTotal.WithLabelValues("departments", "update").Inc()
 		return nil
 	})
 	return out, err

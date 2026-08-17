@@ -6,7 +6,6 @@ package unit_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -199,9 +199,19 @@ func TestDepartmentService_Patch_EmptyNameRejected(t *testing.T) {
 	assert.Equal(t, domain.ErrValidation.Error(), de.Code)
 }
 
+// TestDepartmentService_Patch_NameImmutableCheckViolation simulates the
+// real shape migration 000004 produces: a *pgconn.PgError with SQLSTATE
+// 23514 (check_violation) and ConstraintName
+// "chk_system_department_name_immutable" — matched via
+// pgcommon.IsCheckViolation/ConstraintName, not a substring search over
+// the error message.
 func TestDepartmentService_Patch_NameImmutableCheckViolation(t *testing.T) {
 	repo := newFakeDepartmentRepo()
-	repo.updateErr = errors.New("ERROR: system department name is immutable (SQLSTATE 23514)")
+	repo.updateErr = &pgconn.PgError{
+		Code:           "23514",
+		ConstraintName: "chk_system_department_name_immutable",
+		Message:        "system department name is immutable",
+	}
 	svc := service.NewDepartmentService(repo, newFakeCache())
 	newName := "Renamed"
 	_, err := svc.Patch(context.Background(), uuid.New(), &newName, nil, 1)

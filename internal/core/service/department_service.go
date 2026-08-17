@@ -8,6 +8,7 @@ import (
 
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
 	"github.com/google/uuid"
 )
 
@@ -120,18 +121,27 @@ func (s *DepartmentService) Patch(ctx context.Context, id uuid.UUID, name *strin
 	// D-7/D-9 (system dept retirement) is blocked at the DB level by
 	// chk_system_department_active — surfaces as a CHECK violation which
 	// bubbles up as a raw error. Map it explicitly here for a clean 422.
+	// Both branches below match on pgcommon.IsCheckViolation (SQLSTATE
+	// 23514) + ConstraintName, not a hand-rolled substring search over the
+	// raw error message — chk_system_department_active is a real CHECK
+	// constraint; chk_system_department_name_immutable is a synthetic
+	// constraint name a trigger's RAISE EXCEPTION attaches for exactly this
+	// matching purpose (migration 000004 — it can't be a real CHECK since
+	// it compares OLD vs NEW column values, which CHECK can't express).
 	d, err := s.repo.Update(ctx, id, name, isActive, expectedVersion)
 	if err != nil {
-		if isCheckViolation(err, "chk_system_department_active") {
-			return nil, domain.NewError(domain.ErrSystemDepartmentCannotBeRetired, "system department cannot be retired")
-		}
-		if isCheckViolation(err, "system department name is immutable") {
-			// D-11: renaming a system department is a distinct 422 from the
-			// handler-level field_immutable check on code/is_system in the
-			// body (LLD §6/§20) — this is a rule about *which* department
-			// (is_system=true), not about which field was sent.
-			return nil, domain.NewError(domain.ErrSystemNameImmutable, "system department name is immutable").
-				WithDetails(map[string]any{"field": "name"})
+		if pgcommon.IsCheckViolation(err) {
+			switch pgcommon.ConstraintName(err) {
+			case "chk_system_department_active":
+				return nil, domain.NewError(domain.ErrSystemDepartmentCannotBeRetired, "system department cannot be retired")
+			case "chk_system_department_name_immutable":
+				// D-11: renaming a system department is a distinct 422 from
+				// the handler-level field_immutable check on code/is_system
+				// in the body (LLD §6/§20) — this is a rule about *which*
+				// department (is_system=true), not about which field was sent.
+				return nil, domain.NewError(domain.ErrSystemNameImmutable, "system department name is immutable").
+					WithDetails(map[string]any{"field": "name"})
+			}
 		}
 		return nil, err
 	}
@@ -154,30 +164,4 @@ func (s *DepartmentService) invalidateCache(ctx context.Context) {
 	if s.cache != nil {
 		_ = s.cache.Delete(ctx, "cat:departments")
 	}
-}
-
-// isCheckViolation is a best-effort matcher for named CHECK constraints,
-// ported unchanged from iam-org-membership's operator_service.go.
-func isCheckViolation(err error, name string) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	if msg == "" {
-		return false
-	}
-	return contains(msg, name)
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && indexOf(s, substr) >= 0
-}
-
-func indexOf(s, substr string) int {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }
