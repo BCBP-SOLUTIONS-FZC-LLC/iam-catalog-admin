@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	catmetrics "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
@@ -143,12 +144,14 @@ func (r *PlanRepository) Update(ctx context.Context, code domain.TenantPlan, pat
 					}
 					return perr
 				}
+				catmetrics.OptimisticLockConflicts.WithLabelValues("plans").Inc()
 				return domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").
 					WithDetails(map[string]any{"record_version": v})
 			}
 			return err
 		}
 		out = p
+		catmetrics.WritesTotal.WithLabelValues("plans", "update").Inc()
 		return nil
 	})
 	return out, err
