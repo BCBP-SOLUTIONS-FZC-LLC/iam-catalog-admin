@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"time"
 
@@ -21,44 +20,34 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// DSNFromEnv builds the DSN for the application pool.
-func DSNFromEnv() string {
-	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
+// ApplyStatementTimeout appends a `statement_timeout` libpq option to dsn
+// when PG_STATEMENT_TIMEOUT is set, e.g. "5s". pgcommon.ConfigFromEnv has
+// no concept of statement timeout, so this is applied as a second step on
+// top of the DSN it returns, not folded into pgcommon.Config itself.
+func ApplyStatementTimeout(dsn string) string {
+	t := os.Getenv("PG_STATEMENT_TIMEOUT")
+	if t == "" {
 		return dsn
 	}
-	host := envOrDB("PG_HOST", "localhost")
-	port := envOrDB("PG_PORT", "5432")
-	user := os.Getenv("PG_USER")
-	pass := os.Getenv("PG_PASSWORD")
-	dbname := envOrDB("PG_DBNAME", "catalog_admin")
-	sslmode := envOrDB("PG_SSLMODE", "require")
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		url.PathEscape(user), url.PathEscape(pass), host, port, dbname, sslmode)
-
-	if t := os.Getenv("PG_STATEMENT_TIMEOUT"); t != "" {
-		if d, err := time.ParseDuration(t); err == nil && d > 0 {
-			dsn += fmt.Sprintf("&options=-c%%20statement_timeout%%3D%d", d.Milliseconds())
-		}
+	d, err := time.ParseDuration(t)
+	if err != nil || d <= 0 {
+		return dsn
 	}
-	return dsn
+	return dsn + fmt.Sprintf("&options=-c%%20statement_timeout%%3D%d", d.Milliseconds())
 }
 
 // MigrationDSNFromEnv returns the DSN for schema migrations. Migrations
 // MUST bypass PgBouncer because the migration runner uses
 // pg_advisory_lock, which is session-scoped and breaks under transaction
 // pooling. MIGRATION_DATABASE_URL must be set whenever PG_BOUNCER_MODE=true.
-func MigrationDSNFromEnv() string {
+// appDSN is the already-resolved application DSN (pgcommon.ConfigFromEnv's
+// output, with ApplyStatementTimeout applied) — used as the fallback when
+// MIGRATION_DATABASE_URL is unset.
+func MigrationDSNFromEnv(appDSN string) string {
 	if dsn := os.Getenv("MIGRATION_DATABASE_URL"); dsn != "" {
 		return dsn
 	}
-	return DSNFromEnv()
-}
-
-func envOrDB(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
+	return appDSN
 }
 
 // withPool runs fn inside a single-statement transaction. There is no

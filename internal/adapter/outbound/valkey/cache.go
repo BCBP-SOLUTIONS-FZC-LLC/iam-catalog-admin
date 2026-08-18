@@ -7,6 +7,7 @@ package valkey
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
@@ -20,6 +21,24 @@ type Cache struct {
 }
 
 var _ port.Cache = (*Cache)(nil)
+
+// Logger is the minimal structured-logging capability this package needs —
+// satisfied structurally by platform-gincommon/pkg/logger's port.Logger
+// (an internal type, so this package declares its own duck-typed interface
+// rather than importing it directly).
+type Logger interface {
+	Error(msg string, fields map[string]interface{})
+}
+
+// pkgLogger is nil until SetLogger is called (e.g. from main.go); nil means
+// "fall back to stdlib log" so package tests that never call SetLogger
+// still see output somewhere instead of silently discarding it.
+var pkgLogger Logger
+
+// SetLogger installs the structured logger used by this package's own
+// error logging (currently just Delete's invalidation-failure line, LLD
+// §11.1). Call once at startup, mirroring metrics.Register()'s idiom.
+func SetLogger(l Logger) { pkgLogger = l }
 
 // New creates a Cache from addr. addr may be plain host:port or a full URL
 // (redis://user:pass@host or rediss://... for TLS — required in
@@ -66,11 +85,33 @@ func (c *Cache) Set(ctx context.Context, key string, value []byte, ttl time.Dura
 	return c.client.Set(ctx, key, value, ttl).Err()
 }
 
+// Delete invalidates keys (called on every CAT-1/CAT-2/CAT-5 write, post-
+// commit — LLD §8). A failure here is advisory, same as everywhere else in
+// this cache (CAT-FAIL-1): the stale entry self-heals within its own TTL,
+// so this never fails the write. It is logged, per §11.1's failure matrix,
+// so an operator can tell a Valkey write-path problem from silence.
+//
+// No trace_id/request_id here: platform-gincommon's TraceIDFromContext/
+// RequestIDFromContext both require a *gin.Context, which this adapter
+// layer never has (only the plain context.Context that flows down from
+// it) — reaching for the OTel API directly to reconstruct one just for
+// this single advisory log line isn't worth a new dependency on this
+// package. This is a package-level cross-cutting failure ("Valkey's
+// write path is unhealthy"), not usually one specific request's problem,
+// so the structured message plus the failing keys is enough to act on.
 func (c *Cache) Delete(ctx context.Context, keys ...string) error {
 	if len(keys) == 0 {
 		return nil
 	}
-	return c.client.Del(ctx, keys...).Err()
+	err := c.client.Del(ctx, keys...).Err()
+	if err != nil {
+		if pkgLogger != nil {
+			pkgLogger.Error("cache invalidation failed", map[string]interface{}{"keys": keys, "error": err.Error()})
+		} else {
+			log.Printf("[ERROR] cache invalidation failed keys=%v error=%v", keys, err)
+		}
+	}
+	return err
 }
 
 func (c *Cache) Health(ctx context.Context) error {

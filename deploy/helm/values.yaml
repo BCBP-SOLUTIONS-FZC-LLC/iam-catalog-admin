@@ -22,6 +22,12 @@ serviceAccount:
 service:
   type: ClusterIP
   port: 8081
+  # /metrics is served on its own dedicated port/listener (METRICS_PORT),
+  # separate from the API port above — so a NetworkPolicy can grant the
+  # monitoring namespace scrape access without also granting it access to
+  # the tenant-facing/gateway API surface. Mirrors iam-org-membership's/
+  # iam-tender-acl's/iam-user-profile's identical split.
+  metricsPort: 9090
 
 autoscaling:
   enabled: true
@@ -42,10 +48,19 @@ resources:
 env:
   APP_ENV: prod
   APP_PORT: "8081"
+  METRICS_PORT: "9090"
   APP_NAME: catalog-admin-config
+  CATALOG_TTL_SECONDS: "60" # LLD §15/§8 — cat:departments/cat:plans TTL
   PG_SSLMODE: require
   PG_MAX_CONNS: "10" # LLD §15 — "sized for a read-heavy, write-rare workload"
-  PG_MIN_CONNS: "0"
+  # PG_MIN_CONNS intentionally omitted: pgcommon.ConfigFromEnv's own
+  # validation (platform-pgcommon v1.1.1+) rejects "0" as an invalid,
+  # non-positive value and falls back to its documented default of 2,
+  # logging a warning on every startup if set explicitly to "0" — this used
+  # to be set to "0" here, which is silently corrected by that validation
+  # now that this service adopted ConfigFromEnv. Omitted rather than set to
+  # "2" explicitly so pgcommon's own recommended default stays authoritative
+  # if it ever changes.
   PG_BOUNCER_MODE: "true"
   PG_SLOW_QUERY_THRESHOLD: 200ms
   PG_STATEMENT_TIMEOUT: 5s

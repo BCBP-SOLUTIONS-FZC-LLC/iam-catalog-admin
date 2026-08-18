@@ -1,20 +1,28 @@
-// Package metrics registers this service's own business metrics on top of
-// the generic HTTP request metrics platform-gincommon's
-// ObservabilityMiddlewares already registers automatically. Metric names
-// are prefixed catadmin_ (LLD §13 dashboard requirement), not iam_ — this
-// is a separate service from iam-org-membership and must not collide with
-// its metric namespace if both are ever scraped by the same Prometheus.
+// Package metrics registers this service's own business metrics, prefixed
+// catalog_admin_ (LLD §13.2) — distinct from, and in addition to, the
+// generic HTTP request metrics platform-gincommon's ObservabilityMiddlewares
+// already registers automatically (http_requests_total/
+// http_request_duration_seconds — shared, service-agnostic names/labels
+// (method, route, status_class, error_class), identical across the whole
+// IAM fleet; see LLD §13.2's own bullet 6). RequestsTotal/RequestDuration
+// below are this service's own literal §13.2 metrics — exact status code
+// and quantile, not status_class/le buckets — so a reader following
+// §13.2's PromQL examples finds exactly the names/labels documented there,
+// not just an equivalent under a different name.
 package metrics
 
 import "github.com/prometheus/client_golang/prometheus"
 
 var (
 	// CacheHits counts cat:departments/cat:plans cache hits, labelled by
-	// key. LLD §13: "cat:departments/cat:plans cache hit ratio" is one of
-	// this service's own dashboard's three tracked signals.
+	// key. LLD §13.2: "cat:departments/cat:plans cache hit ratio" is
+	// derived from this and CacheMisses via PromQL
+	// (rate(catalog_admin_cache_hits_total)/(rate(hits)+rate(misses))) —
+	// a raw ratio gauge would be redundant with these two counters and is
+	// not itself instrumented.
 	CacheHits = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "catadmin_cache_hits_total",
+			Name: "catalog_admin_cache_hits_total",
 			Help: "Cache hits against this service's own cat:* keys, labelled by key.",
 		},
 		[]string{"key"},
@@ -24,32 +32,57 @@ var (
 	// Postgres, not an error).
 	CacheMisses = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "catadmin_cache_misses_total",
+			Name: "catalog_admin_cache_misses_total",
 			Help: "Cache misses against this service's own cat:* keys, labelled by key.",
 		},
 		[]string{"key"},
 	)
-
-	// Writes counts successful DB writes (post-commit), labelled by table
-	// (departments/plans) and op (insert/update). LLD §13.2
-	// catalog_admin_writes_total{table,op}.
-	Writes = prometheus.NewCounterVec(
+	// WritesTotal counts departments/plans inserts and updates, labelled by
+	// table and op (LLD §13.2's catalog_admin_writes_total{table,op}).
+	WritesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "catalog_admin_writes_total",
-			Help: "Successful DB writes, labelled by table (departments|plans) and op (insert|update).",
+			Help: "Departments/plans inserts and updates, labelled by table and op.",
 		},
 		[]string{"table", "op"},
 	)
-
-	// OptimisticLockConflicts counts 409 optimistic_lock_conflict responses
-	// from CAT-2/CAT-5, labelled by table. LLD §13.2
-	// catalog_admin_optimistic_lock_conflicts_total{table}.
+	// OptimisticLockConflicts counts CAT-2/CAT-5's 409 optimistic_lock_conflict
+	// rate, labelled by table (LLD §13.2's
+	// catalog_admin_optimistic_lock_conflicts_total{table}). A sustained
+	// nonzero rate feeds the §13.5 alert ("sustained > 0 for > 15 minutes")
+	// — writes are rare enough that any sustained rate is itself
+	// diagnostic of a caller retry-storm or tooling bug.
 	OptimisticLockConflicts = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "catalog_admin_optimistic_lock_conflicts_total",
-			Help: "Optimistic-lock conflict (409) count from CAT-2/CAT-5, labelled by table.",
+			Help: "CAT-2/CAT-5 409 optimistic_lock_conflict occurrences, labelled by table.",
 		},
 		[]string{"table"},
+	)
+	// RequestsTotal is LLD §13.2's catalog_admin_requests_total{route,status}
+	// — every CAT-1 through CAT-I2 call's terminal outcome, labelled by the
+	// matched route template and the exact HTTP status code. Recorded by
+	// the inbound HTTP adapter's request-metrics middleware, scoped to the
+	// /api/v1 group (not the unauthenticated infra probes).
+	RequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "catalog_admin_requests_total",
+			Help: "CAT-1 through CAT-I2 terminal outcomes, labelled by route and exact HTTP status code.",
+		},
+		[]string{"route", "status"},
+	)
+	// RequestDuration is LLD §13.2's
+	// catalog_admin_request_duration_seconds{route,quantile} — feeds the
+	// §13.1 SLOs directly. A Summary (not a Histogram), because §13.2 names
+	// the label "quantile", which is a Summary's exposition shape (a
+	// Histogram would expose "le" instead).
+	RequestDuration = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name:       "catalog_admin_request_duration_seconds",
+			Help:       "CAT-1 through CAT-I2 request latency in seconds, labelled by route. Feeds the §13.1 SLOs.",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		},
+		[]string{"route"},
 	)
 )
 
@@ -57,17 +90,19 @@ var (
 // registry. Call once at startup, before /metrics is served — mirrors
 // iam-org-membership's internal/adapter/outbound/metrics/business.go.
 func Register() {
-	prometheus.MustRegister(CacheHits, CacheMisses, Writes, OptimisticLockConflicts)
-	// Pre-initialise known label combinations so dashboards show 0 rather
-	// than "no data" before the first request.
+	prometheus.MustRegister(CacheHits, CacheMisses, WritesTotal, OptimisticLockConflicts,
+		RequestsTotal, RequestDuration)
+	// Pre-initialise known label values so dashboards show 0 rather than
+	// "no data" before the first request (same rationale as O&M's
+	// business.go).
 	for _, key := range []string{"cat:departments", "cat:plans"} {
 		CacheHits.WithLabelValues(key)
 		CacheMisses.WithLabelValues(key)
 	}
-	for _, tbl := range []string{"departments", "plans"} {
-		OptimisticLockConflicts.WithLabelValues(tbl)
+	for _, table := range []string{"departments", "plans"} {
+		OptimisticLockConflicts.WithLabelValues(table)
 	}
-	Writes.WithLabelValues("departments", "insert")
-	Writes.WithLabelValues("departments", "update")
-	Writes.WithLabelValues("plans", "update")
+	WritesTotal.WithLabelValues("departments", "insert")
+	WritesTotal.WithLabelValues("departments", "update")
+	WritesTotal.WithLabelValues("plans", "update")
 }

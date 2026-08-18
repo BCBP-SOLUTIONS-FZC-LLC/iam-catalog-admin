@@ -22,8 +22,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 
 	_ "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/docs/swagger"
 	httpadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/inbound/http"
@@ -55,6 +53,8 @@ func main() {
 	}
 
 	catmetrics.Register()
+	httpadapter.SetLogger(log)
+	valkeyadapter.SetLogger(log)
 
 	// ── 2. Tracing (opt-in) ───────────────────────────────────────────────
 	var shutdownTracing func()
@@ -74,25 +74,26 @@ func main() {
 	// No GUCProvider — this service has no RLS/tenant-context GUC to bridge
 	// (LLD §9); pgcommon.NewPool is still used for pooling, slow-query
 	// logging, and OTel tracing, which are RLS-independent.
-	dsn := pgadapter.DSNFromEnv()
-	migrationDSN := pgadapter.MigrationDSNFromEnv()
-
-	maxConns, _ := strconv.Atoi(envOr("PG_MAX_CONNS", "10"))
-	minConns, _ := strconv.Atoi(envOr("PG_MIN_CONNS", "0"))
-	slowQueryThreshold := 200 * time.Millisecond
-	if s := os.Getenv("PG_SLOW_QUERY_THRESHOLD"); s != "" {
-		if d, perr := time.ParseDuration(s); perr == nil && d > 0 {
-			slowQueryThreshold = d
-		}
+	//
+	// pgcommon.ConfigFromEnv() (not a hand-rolled DSN/MaxConns/MinConns/
+	// SlowQueryThreshold parse) — closes a real bug the hand-rolled version
+	// had: a typo'd PG_MAX_CONNS used to silently become 0 connections
+	// (strconv.Atoi's error was discarded); ConfigFromEnv validates and
+	// warns instead. Warnings are logged, not silently applied — see
+	// validatePostgresConfig, which also escalates specific warnings to a
+	// hard failure in prod/staging, since this service's own policy (like
+	// the VALKEY_URL check below) is to fail fast on insecure config there,
+	// not just warn.
+	pgCfg, pgWarnings := pgcommon.ConfigFromEnv()
+	for _, w := range pgWarnings {
+		log.Warn("postgres config warning", map[string]interface{}{"key": w.Key, "reason": w.Reason})
 	}
+	pgCfg.DSN = pgadapter.ApplyStatementTimeout(pgCfg.DSN)
+	validatePostgresConfig(appEnv, pgCfg.DSN, pgWarnings)
 
-	pool, err := pgcommon.NewPool(context.Background(), pgcommon.Config{
-		DSN:                dsn,
-		MaxConns:           int32(maxConns),
-		MinConns:           int32(minConns),
-		PGBouncerMode:      os.Getenv("PG_BOUNCER_MODE") == "true",
-		SlowQueryThreshold: slowQueryThreshold,
-	})
+	migrationDSN := pgadapter.MigrationDSNFromEnv(pgCfg.DSN)
+
+	pool, err := pgcommon.NewPool(context.Background(), pgCfg)
 	if err != nil {
 		panic(fmt.Sprintf("connect to postgres: %v", err))
 	}
@@ -117,137 +118,72 @@ func main() {
 	deptRepo := pgadapter.NewDepartmentRepository(pool)
 	planRepo := pgadapter.NewPlanRepository(pool)
 
-	deptSvc := service.NewDepartmentService(deptRepo, cache)
-	planSvc := service.NewPlanService(planRepo, cache)
+	// CATALOG_TTL_SECONDS externalizes the cat:departments/cat:plans cache
+	// TTL (LLD §15) — previously a compiled constant in both services. A
+	// malformed value falls back to the 60s default (WithCacheTTL ignores
+	// d <= 0) rather than crashing — cache TTL is low-stakes enough not to
+	// warrant validatePostgresConfig's startup-panic treatment — but the
+	// parse error is still logged, not silently discarded.
+	catalogTTLRaw := envOr("CATALOG_TTL_SECONDS", "60")
+	catalogTTLSeconds, err := strconv.Atoi(catalogTTLRaw)
+	if err != nil {
+		log.Warn("invalid CATALOG_TTL_SECONDS, falling back to 60s default", map[string]interface{}{"value": catalogTTLRaw, "error": err.Error()})
+		catalogTTLSeconds = 60
+	}
+	catalogTTL := time.Duration(catalogTTLSeconds) * time.Second
+
+	deptSvc := service.NewDepartmentService(deptRepo, cache).WithCacheTTL(catalogTTL)
+	planSvc := service.NewPlanService(planRepo, cache).WithCacheTTL(catalogTTL)
 
 	deptH := httpadapter.NewDepartmentHandler(deptSvc)
 	planH := httpadapter.NewPlanHandler(planSvc)
 	internalH := httpadapter.NewInternalHandler(deptSvc, planSvc)
 
-	// ── 6. Router ─────────────────────────────────────────────────────────
-	r := gin.New()
-	r.HandleMethodNotAllowed = true
-	r.RedirectTrailingSlash = false
+	// ── 6. Router — all routing/middleware wiring lives in the inbound
+	// HTTP adapter (internal/adapter/inbound/http/router.go), not here.
+	// main.go's job is to construct dependencies and hand them to
+	// NewRouter (mirrors iam-org-membership's composition root).
+	router := httpadapter.NewRouter(httpadapter.RouterConfig{
+		GinConfig: cfg,
+		Docs: httpadapter.DocsConfig{
+			Environment: appEnv,
+			Enabled:     os.Getenv("DOCS_ENABLED") == "true",
+			AuthToken:   os.Getenv("DOCS_AUTH_TOKEN"),
+		},
 
-	// Swagger UI is registered BEFORE any middleware so the timeout and
-	// observability wrappers don't interfere with its streaming response
-	// writers. Docs are served when not in production OR when explicitly
-	// opted in via DOCS_ENABLED=true. When enabled in production, set
-	// DOCS_AUTH_TOKEN to require a bearer token — otherwise the full API
-	// surface is exposed unauthenticated.
-	if appEnv != "production" || os.Getenv("DOCS_ENABLED") == "true" {
-		// Defense-in-depth security headers for the docs surface. Swagger UI
-		// requires 'unsafe-inline' and 'unsafe-eval' for its bundled JS.
-		docsSecHeaders := func(c *gin.Context) {
-			c.Header("X-Frame-Options", "DENY")
-			c.Header("X-Content-Type-Options", "nosniff")
-			c.Header("Content-Security-Policy",
-				"default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
-					"style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'")
-			c.Next()
-		}
+		DepartmentHandler: deptH,
+		PlanHandler:       planH,
+		InternalHandler:   internalH,
 
-		var docsAuthMiddleware gin.HandlerFunc
-		if appEnv == "production" {
-			// In production, gate docs behind a static bearer token. Set
-			// DOCS_AUTH_TOKEN to a secret value; leave it empty to skip the
-			// guard (logged as a warning — ensure the deployment is not
-			// internet-reachable).
-			if docsToken := os.Getenv("DOCS_AUTH_TOKEN"); docsToken != "" {
-				docsAuthMiddleware = func(c *gin.Context) {
-					if c.GetHeader("Authorization") != "Bearer "+docsToken {
-						c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-							"code":    "unauthorized",
-							"message": "docs require Authorization: Bearer <DOCS_AUTH_TOKEN>",
-						})
-					}
-				}
-			} else {
-				log.Warn("DOCS_ENABLED in production without DOCS_AUTH_TOKEN — API surface is unauthenticated", nil)
-				docsAuthMiddleware = func(c *gin.Context) { c.Next() }
+		Postgres: pingerFunc(func(ctx context.Context) error {
+			if hs := pool.Health(ctx); !hs.Healthy {
+				return fmt.Errorf("database not healthy")
 			}
-		} else {
-			docsAuthMiddleware = func(c *gin.Context) { c.Next() }
-		}
-
-		stdSwagger := ginSwagger.WrapHandler(swaggerFiles.Handler)
-		r.GET("/swagger/*any", docsSecHeaders, docsAuthMiddleware, func(c *gin.Context) {
-			switch {
-			case strings.HasSuffix(c.Request.URL.Path, "/index.css"):
-				httpadapter.SwaggerThemeHandler(c)
-			case strings.HasSuffix(c.Request.URL.Path, "/swagger-initializer.js"):
-				httpadapter.SwaggerInitializerHandler(c)
-			default:
-				stdSwagger(c)
-			}
-		})
-	}
-
-	r.Use(func(c *gin.Context) {
-		if c.Request.ContentLength > 1<<20 {
-			c.AbortWithStatus(http.StatusRequestEntityTooLarge)
-			return
-		}
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
-		c.Next()
+			return nil
+		}),
+		Cache: cache,
 	})
-	r.Use(gincommon.TimeoutMiddleware(30 * time.Second))
-	r.Use(gincommon.ObservabilityMiddlewares(cfg)...)
-	r.Use(httpadapter.NormalizeAuthErrors())
-
-	r.GET("/healthz", gincommon.HealthHandler())
-	r.GET("/readyz", func(c *gin.Context) {
-		hs := pool.Health(c.Request.Context())
-		if !hs.Healthy {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "database": "down"})
-			return
-		}
-		if err := cache.Health(c.Request.Context()); err != nil {
-			// Cache is advisory (CAT-FAIL-1), but /readyz still fails so the
-			// pod is removed from rotation while Valkey is down — otherwise
-			// every cache miss silently amplifies DB load.
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "cache": "down"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ready"})
-	})
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-
-	// Protected API group. No GUCBridge here (see package doc) — just
-	// identity parsing (IdentityBridgeMiddleware) for role checks.
-	protected := append(
-		gincommon.ProtectedMiddlewares(cfg),
-		httpadapter.IdentityBridgeMiddleware(),
-		httpadapter.RequireJSONContentType(),
-	)
-	v1 := r.Group("/api/v1", protected...)
-	{
-		// CAT-6/CAT-7 — public, any authenticated caller (LLD §6).
-		v1.GET("/departments", deptH.List)
-		v1.GET("/departments/:id", deptH.Get)
-
-		// Operator routes — CAT-1/CAT-2/CAT-3/CAT-4/CAT-5 (LLD §6, §9).
-		op := v1.Group("/operator", httpadapter.RequireOperatorRole())
-		op.POST("/departments", deptH.Create)              // CAT-1
-		op.PATCH("/departments/:id", deptH.Patch)          // CAT-2
-		op.DELETE("/departments/:id", deptH.DeleteBlocked) // CAT-3
-		op.GET("/plans", planH.List)                       // CAT-4
-		op.GET("/plans/:code", planH.Get)                  // CAT-4
-		op.PATCH("/plans/:code", planH.Patch)              // CAT-5
-
-		// Internal routes — CAT-I1/CAT-I2, mesh-only (LLD §7, §9).
-		internal := v1.Group("/internal", httpadapter.RequireSystemRole())
-		internal.GET("/departments", internalH.Departments) // CAT-I1
-		internal.GET("/plans", internalH.Plans)             // CAT-I2
-	}
 
 	// ── 7. Graceful shutdown ───────────────────────────────────────────────
 	srv := &http.Server{
 		Addr:         ":" + envOr("APP_PORT", "8081"),
-		Handler:      r,
+		Handler:      router.Handler(),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 35 * time.Second,
 		IdleTimeout:  60 * time.Second,
+	}
+
+	// Metrics on a dedicated port/listener, separate from the API server
+	// above — so a NetworkPolicy can grant the monitoring namespace scrape
+	// access without also granting it access to the tenant-facing/gateway
+	// API surface. Mirrors iam-org-membership's/iam-tender-acl's/
+	// iam-user-profile's identical split.
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsServer := &http.Server{
+		Addr:              ":" + envOr("METRICS_PORT", "9090"),
+		Handler:           metricsMux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	quit := make(chan os.Signal, 1)
@@ -259,9 +195,31 @@ func main() {
 		"env":     appEnv,
 		"addr":    srv.Addr,
 	})
+	// recoverAndExit is defense-in-depth: ListenAndServe itself essentially
+	// never panics, but without this a panic in either goroutine (now or
+	// from future code added here) would otherwise be silently swallowed
+	// by the Go runtime's default top-level goroutine handling — which
+	// actually crashes the whole process anyway, just without a
+	// structured log line first. Logging then exiting explicitly gives
+	// the same "let Kubernetes restart the pod" outcome, deliberately,
+	// with a diagnosable log line instead of a bare stack trace on stderr.
+	recoverAndExit := func(name string) {
+		if r := recover(); r != nil {
+			log.Error("panic in server goroutine", map[string]interface{}{"goroutine": name, "panic": fmt.Sprintf("%v", r)})
+			os.Exit(1)
+		}
+	}
 	go func() {
+		defer recoverAndExit("api")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server error", map[string]interface{}{"error": err.Error()})
+		}
+	}()
+	go func() {
+		defer recoverAndExit("metrics")
+		log.Info("metrics server starting", map[string]interface{}{"addr": metricsServer.Addr})
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("metrics server error", map[string]interface{}{"error": err.Error()})
 		}
 	}()
 
@@ -277,6 +235,9 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error("HTTP server shutdown error", map[string]interface{}{"error": err.Error()})
 	}
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		log.Error("metrics server shutdown error", map[string]interface{}{"error": err.Error()})
+	}
 	cancelBackground()
 	shutdownTracing()
 	if err := gincommon.Shutdown(log); err != nil {
@@ -285,6 +246,13 @@ func main() {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────
+
+// pingerFunc adapts a plain func to httpadapter.Pinger so /readyz's
+// Postgres check (pool.Health returns a struct, not an error) fits the
+// same interface as valkeyadapter.Cache's Health method.
+type pingerFunc func(ctx context.Context) error
+
+func (f pingerFunc) Health(ctx context.Context) error { return f(ctx) }
 
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -295,15 +263,15 @@ func envOr(key, def string) string {
 
 // validateRequiredEnv panics with a descriptive message if any environment
 // variable required for correct operation is absent. Dev mode relaxes
-// checks so local setups without Valkey/TLS still start.
+// checks so local setups without Valkey/TLS still start. Postgres-specific
+// validation lives in validatePostgresConfig instead, called later once
+// pgcommon.ConfigFromEnv has resolved a DSN and its own warnings — this
+// function only covers what ConfigFromEnv has no concept of (Valkey,
+// migration DSN routing).
 func validateRequiredEnv(appEnv string) {
 	var missing []string
 	if os.Getenv("VALKEY_URL") == "" {
 		missing = append(missing, "VALKEY_URL: Valkey address is required for caching")
-	}
-	if os.Getenv("DATABASE_URL") == "" &&
-		(os.Getenv("PG_HOST") == "" || os.Getenv("PG_USER") == "" || os.Getenv("PG_PASSWORD") == "") {
-		missing = append(missing, "DATABASE_URL (or PG_HOST + PG_USER + PG_PASSWORD): PostgreSQL connection required")
 	}
 	if os.Getenv("MIGRATION_DATABASE_URL") == "" && os.Getenv("PG_BOUNCER_MODE") == "true" &&
 		os.Getenv("DATABASE_URL") == "" {
@@ -313,6 +281,35 @@ func validateRequiredEnv(appEnv string) {
 	if isProd {
 		if v := os.Getenv("VALKEY_URL"); v != "" && !strings.HasPrefix(v, "rediss://") {
 			missing = append(missing, "VALKEY_URL: must use rediss:// in production/staging")
+		}
+	}
+	if len(missing) > 0 {
+		msg := "startup aborted — required env vars missing or misconfigured:\n"
+		for _, m := range missing {
+			msg += "  • " + m + "\n"
+		}
+		panic(msg)
+	}
+}
+
+// validatePostgresConfig panics if pgcommon.ConfigFromEnv couldn't build a
+// usable DSN at all (dsn == ""), or — in production/staging only — if any
+// of its warnings flag an insecure SSL mode (PG_SSLMODE/DATABASE_URL
+// negotiating plaintext: disable/allow/prefer). ConfigFromEnv itself only
+// warns and falls back to a safe default for these; this service's own
+// policy, like the VALKEY_URL check in validateRequiredEnv, is to fail
+// fast on insecure config in production rather than silently proceed.
+func validatePostgresConfig(appEnv, dsn string, warnings []pgcommon.ConfigWarning) {
+	var missing []string
+	if dsn == "" {
+		missing = append(missing, "DATABASE_URL (or PG_USER + PG_DBNAME): PostgreSQL connection required — no DSN could be built")
+	}
+	isProd := appEnv == "production" || appEnv == "staging"
+	if isProd {
+		for _, w := range warnings {
+			if w.Key == "PG_SSLMODE" || w.Key == "DATABASE_URL" {
+				missing = append(missing, fmt.Sprintf("%s: %s (insecure in production/staging)", w.Key, w.Reason))
+			}
 		}
 	}
 	if len(missing) > 0 {

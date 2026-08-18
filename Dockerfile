@@ -45,6 +45,6 @@ LABEL org.opencontainers.image.title="iam-catalog-admin" \
 
 COPY --from=builder /build/bin/catalog-admin-config /catalog-admin-config
 
-EXPOSE 8081
+EXPOSE 8081 9090
 
 ENTRYPOINT ["/catalog-admin-config"]

@@ -26,7 +26,7 @@ instead of passing `secretValues` — see `deploy/helm/templates/secret.yaml`'s 
 | `helm/templates/pdb.yaml` | `minAvailable: 1` — matches the 2-replica baseline |
 | `helm/templates/networkpolicy.yaml` | Egress limited to DNS, Postgres/PgBouncer, Valkey, and (opt-in) OTel — this service makes no AWS SDK calls |
 | `helm/templates/httproute.yaml` / `ingress.yaml` | Off by default (`ingress.enabled: false`). Enable for CAT-6/CAT-7 (`GET /api/v1/departments[/:id]`) if those need gateway routing for external/tenant callers — operator and `/internal/*` routes should stay mesh-only regardless (LLD §16.1) |
-| `helm/templates/servicemonitor.yaml` / `prometheusrule.yaml` | `catadmin_*` alert groups (availability/errors/latency) sized off this service's own LLD §13.1 SLOs, not copied thresholds |
+| `helm/templates/servicemonitor.yaml` / `prometheusrule.yaml` | `catalog_admin_*` alert groups (availability/errors/latency/writes) sized off this service's own LLD §13.1 SLOs, not copied thresholds — `catalog_admin_writes`'s optimistic-lock-conflict alert is the one LLD §13.5 alert that has an actual metric to fire on (`catalog_admin_optimistic_lock_conflicts_total{table}`) |
 | `monitoring/app-alerts.yml` | Static mirror of `prometheusrule.yaml` for manual `--rule-files` Prometheus deployment (kept in sync by hand, same as `docs/architecture/`'s precedent for this service's size) |
 
 ## What's deliberately not here (present in `iam-user-profile`'s `deploy/`)
@@ -37,7 +37,7 @@ instead of passing `secretValues` — see `deploy/helm/templates/secret.yaml`'s 
 | `deploy/iam/` (IRSA policy.json/README/Terraform example) | No AWS SDK dependency at all — no S3, SNS, SQS, or Glue (LLD §15: "no third-party credential to rotate") |
 | `monitoring/prometheus-adapter-rule.yaml` | Only needed for the HPA's RPS custom metric, which this chart doesn't use |
 | `monitoring/schema-registry-alerts.yml` | No event schema governance pipeline — this service publishes no events (LLD §10, CAT-EVT-1/2) |
-| `catadmin_outbox` / `catadmin_compliance` alert groups | No outbox, no RLS, no GDPR surface — neither `departments` nor `plans` carries a `tenant_id` (LLD §9) |
+| `catalog_admin_outbox` / `catalog_admin_compliance` alert groups | No outbox, no RLS, no GDPR surface — neither `departments` nor `plans` carries a `tenant_id` (LLD §9) |
 
 CI/CD (the `helm upgrade --atomic` + Prometheus error-rate gate + auto-rollback pipeline
 in `iam-user-profile`'s `.github/workflows/release.yml`) is a separate concern from this

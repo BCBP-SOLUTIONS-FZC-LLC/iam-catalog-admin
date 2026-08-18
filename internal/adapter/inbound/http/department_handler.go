@@ -110,7 +110,7 @@ func (h *DepartmentHandler) Create(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	metrics.Writes.WithLabelValues("departments", "insert").Inc()
+	metrics.WritesTotal.WithLabelValues("departments", "insert").Inc()
 	c.JSON(http.StatusCreated, departmentToResponse(d))
 }
 
@@ -176,7 +176,7 @@ func (h *DepartmentHandler) Patch(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	metrics.Writes.WithLabelValues("departments", "update").Inc()
+	metrics.WritesTotal.WithLabelValues("departments", "update").Inc()
 	c.JSON(http.StatusOK, departmentToResponse(d))
 }
 

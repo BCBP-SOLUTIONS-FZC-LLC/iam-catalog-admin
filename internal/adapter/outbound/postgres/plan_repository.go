@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	catmetrics "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
@@ -134,9 +135,27 @@ func (r *PlanRepository) Update(ctx context.Context, code domain.TenantPlan, pat
 
 	var out *domain.Plan
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		var e error
-		out, e = planUpdateFromTx(ctx, tx, code, sql, args)
-		return e
+		row := tx.QueryRow(ctx, sql, args...)
+		p, err := scanPlan(row)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				var v int64
+				probe := tx.QueryRow(ctx, `SELECT record_version FROM plans WHERE code = $1`, string(code))
+				if perr := probe.Scan(&v); perr != nil {
+					if errors.Is(perr, pgx.ErrNoRows) {
+						return domain.NewError(domain.ErrPlanNotFound, "plan not found")
+					}
+					return perr
+				}
+				catmetrics.OptimisticLockConflicts.WithLabelValues("plans").Inc()
+				return domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").
+					WithDetails(map[string]any{"record_version": v})
+			}
+			return err
+		}
+		out = p
+		catmetrics.WritesTotal.WithLabelValues("plans", "update").Inc()
+		return nil
 	})
 	return out, err
 }

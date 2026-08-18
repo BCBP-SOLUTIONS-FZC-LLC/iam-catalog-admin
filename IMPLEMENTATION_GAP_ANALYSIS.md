@@ -15,7 +15,7 @@ Change" describes what this repo does about it. Affected files are repo-relative
 | CAT-3 `DELETE /operator/departments/:id` → 405 | Implemented as O-3 | Ported verbatim | Low | same files |
 | CAT-6 `GET /departments` (public list) | **Missing.** No route exists anywhere in O&M's `cmd/server/main.go` or handler files, despite the source LLD's own D-8 invariant requiring it. | **New code.** `DepartmentHandler.List`, any authenticated caller, optional `?active_only=true` | Medium — untested against real traffic patterns; no prior behavior to regress against, but also no production precedent to copy | `internal/adapter/inbound/http/department_handler.go` |
 | CAT-7 `GET /departments/:id` (public get) | **Missing**, same as CAT-6 | **New code.** `DepartmentHandler.Get` | Medium, same rationale | same file |
-| CAT-I1 `GET /internal/departments` (bulk) | **Missing** — O&M reads its own local `departments` table directly wherever it needs one; no bulk-export endpoint exists because there was never a second process to export to. | **New code.** `InternalHandler.Departments`, mesh-only (`iam-system`) | Medium — this is the seam O&M/Group-Mapping must switch to (see `O_AND_M_DELTA.md`); until that cutover happens, this endpoint has no real caller | `internal/adapter/inbound/http/internal_handler.go` |
+| CAT-I1 `GET /api/v1/internal/departments` (bulk) | **Missing** — O&M reads its own local `departments` table directly wherever it needs one; no bulk-export endpoint exists because there was never a second process to export to. | **New code.** `InternalHandler.Departments`, mesh-only (`iam-system`). Path is `/api/v1/internal/departments` (CAT-D8, LLD v1.2) — matches O&M's already-built `CatalogAdminClient`, not the pre-CAT-D8 `/internal/departments` convention this row previously documented. | Low, was Medium — the cutover has since completed (verified against O&M's shipped `cmd/server/main.go`/`catalogadminclient`); this endpoint is O&M's live `om:departments` cache-population path today, not a not-yet-adopted seam. O&M has no local fallback anymore, so this endpoint being down (with O&M's cache also cold/expired) is now a real production incident on O&M's side, not a hypothetical. | `internal/adapter/inbound/http/internal_handler.go`, `internal/adapter/inbound/http/router.go` |
 | D-1..D-11 invariants | Enforced via DB triggers + `chk_system_department_active` CHECK, all in O&M's migrations | Ported unchanged (byte-identical DDL/triggers) | Low — verified end-to-end against a real Postgres in `internal/adapter/outbound/postgres/integration_test.go` | `internal/adapter/outbound/postgres/migrations/000001_init_schema.up.sql`, `000002_triggers.up.sql` |
 | O&M cache-invalidation gap on O-1/O-2 | **Bug, not spec.** O&M's `operator_service.go` never calls `cache.Delete` on department writes, despite the source LLD documenting both as `Cached: invalidates`. | **Fixed, not reproduced.** `DepartmentService.Create`/`Patch` correctly invalidate `cat:departments` after every write. | Low (this is strictly an improvement) | `internal/core/service/department_service.go` |
 | Postgres grants gap (`org_membership_app` had only `SELECT` on `departments`/`plans` in O&M, yet performed INSERT/UPDATE) | Latent bug, masked in dev because the app role is also the migration owner | **Fixed, not reproduced.** `catalog_admin_app` is granted `SELECT, INSERT, UPDATE` on `departments` explicitly. | Low (improvement) | `internal/adapter/outbound/postgres/migrations/000003_roles_grants.up.sql` |
@@ -52,24 +52,63 @@ Change" describes what this repo does about it. Affected files are repo-relative
 | CAT-EVT-4 (TTL-only propagation) | **Implemented** — see `CACHE_DESIGN.md`. |
 | CAT-EVT-5 (future events re-enter governance) | **N/A today** — documented as a forward-looking constraint in `EVENT_COMPATIBILITY_REPORT.md`. |
 
-## Audit (LLD §10.6)
+## Audit (LLD §10.7)
 
-**Partially implemented — a genuine gap, not a design choice.** The LLD states every write should
-produce "an audit-log entry via the same mechanism O&M uses for non-eventful writes," but
-inspection of `platform-gincommon`/`platform-pgcommon` and O&M's own code found **no dedicated
-audit-log table or service anywhere in the platform** — O&M's own O-1/O-2/O-3 writes have never
-had one either, despite the same LLD line implying they should. This service currently relies on
-structured request logging (`gincommon.ObservabilityMiddlewares`' `LoggingMiddleware`) as the only
-durable record of a write, which is *not* the same guarantee as a queryable audit trail. **This is
-carried forward as a known limitation, not fixed here**, since fixing it would mean inventing a
-new platform-wide audit mechanism — explicitly out of scope ("Do not invent new frameworks").
-Flagging this for the platform team: if audit-log is genuinely required, it needs a shared
-`platform-audit` library adopted by every IAM service, not a one-off table in this service.
+**Not implemented — a real gap, and a deliberate decision not to paper over it with a local table.**
+The HLD (`iam-hld-tender-saas-v1.41.md` §5.7) defines an Audit Log Service (its own `audit` RDS
+database, 3 replicas, SNS-consumer architecture) and its §9.4 catalog-scope note names a "direct
+audit write" category — `TenantSettingChanged` and siblings, entry types persisted directly rather
+than via a bus event — that CAT-1/CAT-2/CAT-5 writes belong to by the same pattern. But no LLD on
+the platform specifies that direct-write mechanism's actual contract (no ingest endpoint, no client
+port, no schema), and no `iam-audit-log` repository exists to call. Checked directly against
+`org_membership_lld_5.md` — the platform's most mature, most rigorously self-audited LLD, which
+documents three outbound client ports (`UserProfileClient`, `WorkflowClient`,
+`RealmProvisionerClient`) in full detail and ran a dedicated "second audit pass (config/ports)"
+(rev 1.25) that explicitly confirmed all outbound clients were "defined+configured symmetrically"
+with "no other referenced port/config undocumented" — and it has **no audit client either**,
+despite referencing "writes a `TenantSettingChanged` audit entry" dozens of times. This is a
+platform-wide gap between the HLD's stated architecture and every service's actual integration, not
+something specific to this repository, and not something this repository can close alone by
+inventing a client against a contract nobody has specified. A local `audit_log` table was briefly
+built and then removed: an interim table against no known contract risks being the wrong shape once
+the real one exists, so CAT-1/CAT-2/CAT-5 writes remain covered only by structured request logging
+(`gincommon.ObservabilityMiddlewares`) — the same posture O&M's own operator writes have. Flagging
+this for the platform team, unchanged in substance from before: once the Audit Log Service's
+ingest contract is actually specified, this service should integrate directly. See LLD **CAT-D10**
+(§14) and **CAT-Q7** (§19) for the full reasoning and open-item tracking.
+
+## Metrics (LLD §13.2)
+
+**Now implemented with the exact names/labels §13.2 specifies**, in
+`internal/adapter/outbound/metrics/metrics.go`. Previously this package registered only two
+counters (`cache_hits_total`/`cache_misses_total`) under a `catadmin_` prefix the code's own
+comment called out as a deliberate deviation from §13.2's `catalog_admin_` convention, and
+`catalog_admin_writes_total`/`catalog_admin_optimistic_lock_conflicts_total` didn't exist at all —
+directly undercutting §13.5's "optimistic-lock-conflict rate sustained > 0 for > 15 minutes" alert,
+which had no metric to fire on. All five now exist under the `catalog_admin_` prefix:
+`catalog_admin_requests_total{route,status}` and `catalog_admin_request_duration_seconds{route,quantile}`
+(a `SummaryVec`, not a `HistogramVec` — §13.2 names the label `quantile`, which only a Summary
+exposes) are recorded by `requestMetricsMiddleware` (`internal/adapter/inbound/http/router.go`),
+scoped to the `/api/v1` group and running before auth so rejected requests are still counted;
+`catalog_admin_writes_total{table,op}` and `catalog_admin_optimistic_lock_conflicts_total{table}`
+are incremented directly in `DepartmentRepository`/`PlanRepository`'s `Insert`/`Update`
+(`internal/adapter/outbound/postgres/*_repository.go`) at the exact point each outcome is known;
+`catalog_admin_cache_hits_total`/`catalog_admin_cache_misses_total` (`valkey/cache.go`) were
+re-prefixed, not restructured — a hit-ratio-as-two-counters is derivable in PromQL and was judged
+not worth a redundant gauge. These are this service's own business-level metrics, in addition to
+(not instead of) the generic `http_requests_total`/`http_request_duration_seconds` platform-gincommon
+already registers automatically with different labels (`status_class`/`error_class`, `le` buckets).
 
 ## Migration plan (LLD §12)
 
-Covered in full in `MIGRATION_RUNBOOK.md`. Summary of what's true today: this repository
-implements Phase 1 ("Expand" — schema + service exist and are independently deployable) and is
-ready for Phase 2 ("Cut over reads"), but **Phases 2 through 7 have not been executed** — O&M's
-tables, triggers, and O-1/O-2/O-3/O-5/O-6 handlers remain live and authoritative. No cutover has
-happened; this service is not yet receiving production traffic.
+Covered in full in `MIGRATION_RUNBOOK.md`. **Status: complete, not still-pending as this section
+previously said.** Verified directly against O&M's shipped code: `cmd/server/main.go` states the
+cutover completed and this service is sole writer; O&M's migration `000013_drop_catalog_tables.up.sql`
+drops both tables and their four FKs; `operator_service.go` retains only O-4/O-7 (O-1/O-2/O-3/O-5/O-6
+are gone, not disabled); no `department_repository.go`/`plan_repository.go` remain anywhere in O&M.
+This service is now O&M's sole system of record for both tables, with **no local fallback on O&M's
+side** — an outage here coinciding with an empty/expired `om:departments`/`om:plans` cache (past the
+24 h stale-if-error ceiling) is a hard failure for O&M's department/plan-dependent writes, not a
+degraded one. This section previously said "no cutover has happened; this service is not yet
+receiving production traffic" — that was stale as of a cross-service check against O&M's actual
+code, not this repository's own.

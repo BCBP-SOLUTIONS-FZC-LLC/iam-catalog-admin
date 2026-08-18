@@ -169,6 +169,6 @@ func (h *PlanHandler) Patch(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	metrics.Writes.WithLabelValues("plans", "update").Inc()
+	metrics.WritesTotal.WithLabelValues("plans", "update").Inc()
 	c.JSON(http.StatusOK, planToResponse(p))
 }
