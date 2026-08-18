@@ -29,12 +29,14 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	httpadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/inbound/http"
+	catmetrics "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/metrics"
 	pgadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/postgres"
 	valkeyadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/valkey"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
@@ -52,12 +54,13 @@ func (f pingerFunc) Health(ctx context.Context) error { return f(ctx) }
 // e2eEnv bundles a fully wired stack + a live httptest.Server so tests can
 // issue real HTTP requests.
 type e2eEnv struct {
-	ctx     context.Context
-	pool    *pgcommon.Pool
-	rawPool *pgxpool.Pool
-	cache   *valkeyadapter.Cache
-	server  *httptest.Server
-	baseURL string
+	ctx        context.Context
+	pool       *pgcommon.Pool
+	rawPool    *pgxpool.Pool
+	cache      *valkeyadapter.Cache
+	server     *httptest.Server
+	baseURL    string
+	metricsURL string
 }
 
 // newE2EEnv provisions Postgres + Valkey, wires the real production
@@ -112,7 +115,24 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	server := httptest.NewServer(router.Handler())
 	t.Cleanup(server.Close)
 
-	return &e2eEnv{ctx: ctx, pool: pool, rawPool: rawPool, cache: cache, server: server, baseURL: server.URL}
+	// catalog_admin_* business metrics (LLD §13.2) — registered the same way
+	// main.go does, after NewRouter (which is what populates gincommon's
+	// registerer/const-labels). Register is idempotent (sync.Once): only the
+	// first test in this binary actually registers; later tests reuse it.
+	catmetrics.Register(gincommon.MetricsRegisterer(), gincommon.MetricsConstLabels())
+
+	// A separate metrics-only server, mirroring main.go's dedicated
+	// METRICS_PORT listener (router.Handler() deliberately has no /metrics
+	// route of its own — see router.go's registerInfraRoutes).
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsServer := httptest.NewServer(metricsMux)
+	t.Cleanup(metricsServer.Close)
+
+	return &e2eEnv{
+		ctx: ctx, pool: pool, rawPool: rawPool, cache: cache,
+		server: server, baseURL: server.URL, metricsURL: metricsServer.URL,
+	}
 }
 
 // setupE2EDB spins up a Postgres testcontainer, runs the service's own

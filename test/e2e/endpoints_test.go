@@ -41,6 +41,20 @@ func doJSON(t *testing.T, env *e2eEnv, method, path string, headers func(*http.R
 	return resp.StatusCode, raw
 }
 
+// fetchMetrics returns the Prometheus text exposition served by env's
+// dedicated metrics server (mirrors production's separate METRICS_PORT
+// listener — router.Handler() has no /metrics route of its own).
+func fetchMetrics(t *testing.T, env *e2eEnv) string {
+	t.Helper()
+	resp, err := http.Get(env.metricsURL + "/metrics")
+	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return string(raw)
+}
+
 func decodeMap(t *testing.T, raw []byte) map[string]any {
 	t.Helper()
 	var m map[string]any

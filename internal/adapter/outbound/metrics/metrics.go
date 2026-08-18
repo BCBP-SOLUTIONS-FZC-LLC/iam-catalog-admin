@@ -11,7 +11,11 @@
 // not just an equivalent under a different name.
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 var (
 	// CacheHits counts cat:departments/cat:plans cache hits, labelled by
@@ -111,14 +115,28 @@ func init() {
 	build(nil)
 }
 
+var registerOnce sync.Once
+
 // Register (re)builds this package's collectors with constLabels and installs
-// them on reg. Call once at startup, after gincommon.ObservabilityMiddlewares/
-// DefaultMiddlewares has run — pass gincommon.MetricsRegisterer() and
-// gincommon.MetricsConstLabels() so these catalog_admin_* collectors are
-// registered the same way, and carry the same {service, version} labels, as
-// gincommon's own http_requests_total/etc. Mirrors iam-org-membership's
-// internal/adapter/outbound/metrics/business.go.
+// them on reg, after gincommon.ObservabilityMiddlewares/DefaultMiddlewares has
+// run — pass gincommon.MetricsRegisterer() and gincommon.MetricsConstLabels()
+// so these catalog_admin_* collectors are registered the same way, and carry
+// the same {service, version} labels, as gincommon's own http_requests_total/
+// etc. Mirrors iam-org-membership's internal/adapter/outbound/metrics/
+// business.go.
+//
+// Idempotent via sync.Once (mirrors gincommon's own metrics.Init): the first
+// caller wins. Needed because the e2e test suite builds a fresh RouterConfig
+// per test via the same composition-root call path — without this, the
+// second test's call would panic with "duplicate metrics collector
+// registration attempted" against the shared prometheus.DefaultRegisterer.
 func Register(reg prometheus.Registerer, constLabels prometheus.Labels) {
+	registerOnce.Do(func() {
+		registerOnto(reg, constLabels)
+	})
+}
+
+func registerOnto(reg prometheus.Registerer, constLabels prometheus.Labels) {
 	build(constLabels)
 	reg.MustRegister(CacheHits, CacheMisses, WritesTotal, OptimisticLockConflicts,
 		RequestsTotal, RequestDuration)

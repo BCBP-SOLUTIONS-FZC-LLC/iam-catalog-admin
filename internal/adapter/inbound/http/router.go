@@ -83,6 +83,12 @@ func NewRouter(cfg RouterConfig) *Router {
 	// Return 405 Method Not Allowed (with Allow header) when a path exists
 	// but the HTTP method is not registered, instead of the default 404.
 	r.HandleMethodNotAllowed = true
+	// Disable Gin's default 301-redirect-on-trailing-slash (e.g.
+	// GET /operator/plans/ -> /operator/plans): an httptest.Server request
+	// with a redirect-following client would silently land on the parent
+	// route's handler (CA4B-V-03 expects a plain 404 for an empty :code/:id
+	// path segment, not the list handler's 200).
+	r.RedirectTrailingSlash = false
 	// Gin's built-in 405 handler returns an empty body. Override it so every
 	// 405 carries the same JSON error envelope as all other error responses
 	// (LLD §20). The Allow header is preserved — Gin sets it before this

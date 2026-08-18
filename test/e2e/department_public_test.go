@@ -47,24 +47,22 @@ func TestListDepartments_ActiveOnlyFalse_IncludesRetiredDepts(t *testing.T) {
 	assert.Contains(t, string(raw), "pub_retire_h03", "retired dept must appear when active_only=false")
 }
 
-// Scenario CA6-BL-02: cache miss on first request increments catadmin_cache_misses_total
+// Scenario CA6-BL-02: cache miss on first request increments catalog_admin_cache_misses_total
 func TestListDepartments_ColdStart_IncrementsCacheMissCounter(t *testing.T) {
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/departments", publicHeaders, nil)
 	require.Equal(t, http.StatusOK, status)
 
-	_, metricsRaw := doJSON(t, env, http.MethodGet, "/metrics", nil, nil)
-	assert.Contains(t, string(metricsRaw), "catadmin_cache_misses_total")
+	assert.Contains(t, fetchMetrics(t, env), "catalog_admin_cache_misses_total")
 }
 
-// Scenario CA6-BL-03: second call within TTL hits cache, increments catadmin_cache_hits_total
+// Scenario CA6-BL-03: second call within TTL hits cache, increments catalog_admin_cache_hits_total
 func TestListDepartments_SecondCall_HitsCacheCounter(t *testing.T) {
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodGet, "/api/v1/departments", publicHeaders, nil) //nolint:errcheck
 	doJSON(t, env, http.MethodGet, "/api/v1/departments", publicHeaders, nil) //nolint:errcheck
 
-	_, metricsRaw := doJSON(t, env, http.MethodGet, "/metrics", nil, nil)
-	assert.Contains(t, string(metricsRaw), "catadmin_cache_hits_total")
+	assert.Contains(t, fetchMetrics(t, env), "catalog_admin_cache_hits_total")
 }
 
 // ═════════════════════════════════════════════════════════════════════════
