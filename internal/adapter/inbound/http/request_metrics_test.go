@@ -42,6 +42,26 @@ func TestRequestMetricsMiddleware_RecordsRouteAndStatus(t *testing.T) {
 	assert.GreaterOrEqual(t, testutil.CollectAndCount(catmetrics.RequestDuration), durationCountBefore)
 }
 
+// TestRequestMetricsMiddleware_UnmatchedRoute verifies that when Gin cannot
+// match a route template (c.FullPath() == ""), the middleware falls back to
+// the raw request path so label cardinality stays finite.
+func TestRequestMetricsMiddleware_UnmatchedRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(requestMetricsMiddleware())
+	// No route registered — every request is unmatched (FullPath() == "").
+
+	before := testutil.ToFloat64(catmetrics.RequestsTotal.WithLabelValues("/no-such-path", "404"))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/no-such-path", nil)
+	r.ServeHTTP(w, req)
+
+	// Status is 404 because no handler is registered.
+	assert.Equal(t, before+1,
+		testutil.ToFloat64(catmetrics.RequestsTotal.WithLabelValues("/no-such-path", "404")))
+}
+
 // TestRequestMetricsMiddleware_RecordsErrorStatus verifies a non-2xx
 // terminal outcome (e.g. an auth rejection upstream of a handler) is
 // still counted — the middleware runs first in the chain precisely so

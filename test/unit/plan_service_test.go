@@ -118,6 +118,18 @@ func TestPlanService_Patch_NoMutableField(t *testing.T) {
 	assert.Equal(t, domain.ErrNoMutableField.Error(), de.Code)
 }
 
+func TestPlanService_Patch_EmptyDisplayNameRejected(t *testing.T) {
+	svc := service.NewPlanService(newFakePlanRepo(), newFakeCache())
+	empty := ""
+	_, err := svc.Patch(context.Background(), domain.PlanStarter, &domain.PlanPatch{
+		DisplayName: &empty, RecordVersion: 1,
+	})
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, domain.ErrValidation.Error(), de.Code)
+}
+
 func TestPlanService_Patch_NegativeLimitRejected(t *testing.T) {
 	svc := service.NewPlanService(newFakePlanRepo(), newFakeCache())
 	bad := -1

@@ -86,6 +86,19 @@ func TestParseUUIDParam(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestHandleError_MaxBytesError verifies the chunked-request body-size path
+// (CA-SEC-01): a *http.MaxBytesError from MaxBytesReader must produce 413,
+// not fall through to the generic 500.
+func TestHandleError_MaxBytesError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	HandleError(c, &http.MaxBytesError{Limit: 1 << 20})
+	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+}
+
 func TestHandleError_GenericFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

@@ -48,6 +48,19 @@ func (r *mockRows) Next() bool {
 }
 func (r *mockRows) Scan(_ ...any) error { return r.err }
 
+// mockRowWithVersion is a pgx.Row that succeeds and populates a single
+// int64 destination — used to simulate the probe returning a live version.
+type mockRowWithVersion struct{ version int64 }
+
+func (r mockRowWithVersion) Scan(dest ...any) error {
+	if len(dest) > 0 {
+		if v, ok := dest[0].(*int64); ok {
+			*v = r.version
+		}
+	}
+	return nil
+}
+
 // ── panicTx ──────────────────────────────────────────────────────────────────
 
 // panicTx is a base stub that implements pgx.Tx with all methods panicking.
@@ -201,6 +214,28 @@ func TestDeptUpdateFromTx_NilDeptAfterNoRows(t *testing.T) {
 	assert.Equal(t, domain.ErrDepartmentNotFound.Error(), de.Code)
 }
 
+// TestDeptUpdateFromTx_OCCConflict covers the OCC branch: main UPDATE returns
+// ErrNoRows (version mismatch) and the probe successfully returns the current
+// version → ErrOptimisticLockConflict with that version in Details.
+func TestDeptUpdateFromTx_OCCConflict(t *testing.T) {
+	tx := &mockTxWithQueryRow{
+		rows: []pgx.Row{
+			mockRow{err: pgx.ErrNoRows},           // main UPDATE: version mismatch
+			mockRowWithVersion{version: int64(3)}, // probe: current version is 3
+		},
+	}
+	id := uuid.New()
+	name := "new name"
+	sql := `UPDATE departments SET name = $3 WHERE id = $1 AND record_version = $2 RETURNING ` + departmentSelectColumns
+	args := []any{id, int64(1), name}
+	_, err := deptUpdateFromTx(context.Background(), tx, id, sql, args)
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.True(t, errors.As(err, &de))
+	assert.Equal(t, domain.ErrOptimisticLockConflict.Error(), de.Code)
+	assert.EqualValues(t, 3, de.Details["record_version"])
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // plan_repository whitebox tests
 // ════════════════════════════════════════════════════════════════════════════
@@ -228,6 +263,73 @@ func TestPlanUpdateFromTx_ProbeScanNonErrNoRowsError(t *testing.T) {
 	_, err := planUpdateFromTx(context.Background(), tx, domain.PlanStarter, sql, args)
 	require.Error(t, err)
 	assert.Equal(t, errScan, err)
+}
+
+// TestPlanUpdateFromTx_ProbeErrNoRows covers the path where the main UPDATE
+// returns ErrNoRows and the probe also returns ErrNoRows → ErrPlanNotFound.
+func TestPlanUpdateFromTx_ProbeErrNoRows(t *testing.T) {
+	tx := &mockTxWithQueryRow{
+		rows: []pgx.Row{
+			mockRow{err: pgx.ErrNoRows}, // main UPDATE: no match
+			mockRow{err: pgx.ErrNoRows}, // probe: plan doesn't exist
+		},
+	}
+	sql := `UPDATE plans SET display_name = $3 WHERE code = $1 AND record_version = $2 RETURNING ` + planCols
+	args := []any{"starter", int64(1), "New Name"}
+	_, err := planUpdateFromTx(context.Background(), tx, domain.PlanStarter, sql, args)
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.True(t, errors.As(err, &de))
+	assert.Equal(t, domain.ErrPlanNotFound.Error(), de.Code)
+}
+
+// TestPlanUpdateFromTx_OCCConflict covers the OCC branch: main UPDATE returns
+// ErrNoRows and the probe successfully returns the current version.
+func TestPlanUpdateFromTx_OCCConflict(t *testing.T) {
+	tx := &mockTxWithQueryRow{
+		rows: []pgx.Row{
+			mockRow{err: pgx.ErrNoRows},           // main UPDATE: version mismatch
+			mockRowWithVersion{version: int64(5)}, // probe: current version is 5
+		},
+	}
+	sql := `UPDATE plans SET display_name = $3 WHERE code = $1 AND record_version = $2 RETURNING ` + planCols
+	args := []any{"starter", int64(1), "New Name"}
+	_, err := planUpdateFromTx(context.Background(), tx, domain.PlanStarter, sql, args)
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.True(t, errors.As(err, &de))
+	assert.Equal(t, domain.ErrOptimisticLockConflict.Error(), de.Code)
+	assert.EqualValues(t, 5, de.Details["record_version"])
+}
+
+// TestDeptUpdateFromTx_MainScanNonErrNoRowsError covers the `return nil, err`
+// branch in deptUpdateFromTx when the main UPDATE's RETURNING scan fails with
+// a non-ErrNoRows error (department_repository.go deptUpdateFromTx line 203).
+func TestDeptUpdateFromTx_MainScanNonErrNoRowsError(t *testing.T) {
+	tx := &mockTxWithQueryRow{
+		rows: []pgx.Row{
+			mockRow{err: errScan}, // main scan: non-ErrNoRows error
+		},
+	}
+	id := uuid.New()
+	name := "new name"
+	sql := `UPDATE departments SET name = $3 WHERE id = $1 AND record_version = $2 RETURNING ` + departmentSelectColumns
+	args := []any{id, int64(1), name}
+	_, err := deptUpdateFromTx(context.Background(), tx, id, sql, args)
+	require.Error(t, err)
+	assert.Equal(t, errScan, err)
+}
+
+// TestPlanRepository_Update_NilPatch covers the defensive guard at the top
+// of PlanRepository.Update — a nil patch must be rejected with validation_error
+// before touching the connection pool.
+func TestPlanRepository_Update_NilPatch(t *testing.T) {
+	repo := &PlanRepository{pool: nil}
+	_, err := repo.Update(context.Background(), domain.PlanStarter, nil)
+	require.Error(t, err)
+	var de *domain.DomainError
+	require.True(t, errors.As(err, &de))
+	assert.Equal(t, domain.ErrValidation.Error(), de.Code)
 }
 
 // TestPlanUpdateFromTx_MainScanNonErrNoRowsError covers the `return nil, err`

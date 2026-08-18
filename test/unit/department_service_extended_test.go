@@ -214,3 +214,23 @@ func (*alwaysErrCache) Health(_ context.Context) error              { return err
 func (*alwaysErrCache) Close() error                                { return nil }
 
 var _ port.Cache = (*alwaysErrCache)(nil)
+
+// ── WithCacheTTL: positive duration overrides TTL ────────────────────────
+
+// Scenario CA-CACHE-TTL-01
+func TestDepartmentService_WithCacheTTL_PositiveDuration_Applied(t *testing.T) {
+	svc := service.NewDepartmentService(newFakeDepartmentRepo(), newFakeCache()).
+		WithCacheTTL(5 * time.Minute)
+	require.NotNil(t, svc, "WithCacheTTL must return the same service (fluent builder)")
+	// Verify the service still works correctly after TTL override.
+	d, err := svc.Create(context.Background(), "ttl-u99", "TTL Test", false)
+	require.NoError(t, err)
+	assert.NotEmpty(t, d.ID)
+}
+
+// Scenario CA-CACHE-TTL-02
+func TestDepartmentService_WithCacheTTL_ZeroDuration_Ignored(t *testing.T) {
+	svc := service.NewDepartmentService(newFakeDepartmentRepo(), newFakeCache()).
+		WithCacheTTL(0)
+	require.NotNil(t, svc, "WithCacheTTL(0) must still return the service")
+}

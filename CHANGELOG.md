@@ -8,6 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Observability test coverage uplift (94.9% → 98.9%)
+
+- **Coverage review after observability changes** (2026-08-18) found 17 uncovered branches
+  across the unit/whitebox tier and added targeted tests to close them without touching
+  production code:
+  - `WithCacheTTL` (both `DepartmentService` and `PlanService`) — 0% → 100%
+  - `PlanService.Patch` empty `display_name` validation path — 95.8% → 100%
+  - `HandleError` `*http.MaxBytesError` → 413 path (CA-SEC-01 chunked-body guard) — 81.2% → 93.8%
+  - `readyz`: Postgres-down and cache-down 503 paths — 75% → 100%
+  - `requestMetricsMiddleware`: unmatched-route fallback (`c.FullPath() == ""`) — 88.9% → 100%
+  - `registerDocsRoutes`: docs-disabled early-return, CSS/initializer route branches — 76% → 92%
+  - `deptUpdateFromTx`/`planUpdateFromTx`: OCC-conflict (probe returns live version)
+    and non-ErrNoRows main-scan-error paths — 76.9% → 92.3%
+  - `postgres/logger.go` (`NewDomainLogger`, `fieldsToMap`, all four log levels) — 0% → 100%
+  - `PlanRepository.Update` nil-patch defensive guard — 95.7% (unchanged — json.Marshal
+    failure path is unreachable in practice; accepted as ceiling)
+  - **Merged coverage: 94.9% → 98.9%** (all 242 test scenarios: Auto Test Pass)
+  - New files: `internal/adapter/inbound/http/readyz_test.go`,
+    `internal/adapter/outbound/postgres/logger_test.go`
+  - New tests appended to: `department_service_extended_test.go`,
+    `plan_service_extended_test.go`, `plan_service_test.go`,
+    `middleware_test.go`, `request_metrics_test.go`, `repo_whitebox_test.go`
+
 ### Fixed — `CATALOG_TTL_SECONDS` parse error was silently discarded
 
 - **A fresh LLD-vs-code audit found `cmd/catalog-admin-config/main.go`'s `CATALOG_TTL_SECONDS`

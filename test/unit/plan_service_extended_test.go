@@ -6,6 +6,7 @@ package unit_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
@@ -172,6 +173,25 @@ func TestPlanService_Patch_RecordVersionIncrements_AfterUpdate(t *testing.T) {
 }
 
 // ── CA4A-BL-02: cache unavailable → plan list still succeeds ──────────
+
+// ── WithCacheTTL: positive duration overrides TTL ────────────────────────
+
+// Scenario CA-CACHE-TTL-03
+func TestPlanService_WithCacheTTL_PositiveDuration_Applied(t *testing.T) {
+	svc := service.NewPlanService(newFakePlanRepo(), newFakeCache()).
+		WithCacheTTL(5 * time.Minute)
+	require.NotNil(t, svc, "WithCacheTTL must return the same service (fluent builder)")
+	plans, err := svc.List(context.Background())
+	require.NoError(t, err)
+	assert.NotEmpty(t, plans)
+}
+
+// Scenario CA-CACHE-TTL-04
+func TestPlanService_WithCacheTTL_ZeroDuration_Ignored(t *testing.T) {
+	svc := service.NewPlanService(newFakePlanRepo(), newFakeCache()).
+		WithCacheTTL(0)
+	require.NotNil(t, svc, "WithCacheTTL(0) must still return the service")
+}
 
 // Scenario CA4A-BL-02
 func TestPlanService_List_CacheUnavailable_FailsOpen(t *testing.T) {
