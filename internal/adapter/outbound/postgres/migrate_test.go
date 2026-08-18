@@ -10,6 +10,6 @@ import (
 func TestRunMigrationsFrom_InvalidSubPath(t *testing.T) {
 	// fs.Sub returns an error when the subPath is not a valid fs path
 	// (".." is rejected by fs.ValidPath).
-	err := runMigrationsFrom(context.Background(), migrationsFS, "..", "unused-dsn")
+	err := runMigrationsFrom(context.Background(), migrationsFS, "..", "unused-dsn", nil)
 	require.Error(t, err)
 }

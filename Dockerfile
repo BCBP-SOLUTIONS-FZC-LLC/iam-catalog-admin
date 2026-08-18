@@ -3,7 +3,7 @@
 # Ported from iam-org-membership's Dockerfile — same secret-handling
 # pattern for GOPRIVATE module auth. Single binary only: this service has
 # no reconciler/batch-job binary (LLD §10 — no events, no scheduled jobs).
-FROM golang:1.26.5-alpine@sha256:99e12cfb19b753915f9b9fdc5a99f1869a24a69d3a0955832d5702e7fa68f1be AS builder
+FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS builder
 
 WORKDIR /build
 

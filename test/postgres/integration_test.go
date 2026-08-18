@@ -50,7 +50,7 @@ func setupTestDB(t *testing.T) (*pgcommon.Pool, *pgxpool.Pool) {
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)
 
-	require.NoError(t, pgadapter.RunMigrations(ctx, dsn))
+	require.NoError(t, pgadapter.RunMigrations(ctx, dsn, nil))
 
 	pool, err := pgcommon.NewPool(ctx, pgcommon.Config{DSN: dsn, MaxConns: 5})
 	require.NoError(t, err)

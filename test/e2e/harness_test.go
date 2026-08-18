@@ -136,7 +136,7 @@ func setupE2EDB(t *testing.T, ctx context.Context) (*pgcommon.Pool, *pgxpool.Poo
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)
 
-	require.NoError(t, pgadapter.RunMigrations(ctx, dsn))
+	require.NoError(t, pgadapter.RunMigrations(ctx, dsn, nil))
 
 	pool, err := pgcommon.NewPool(ctx, pgcommon.Config{DSN: dsn, MaxConns: 10})
 	require.NoError(t, err)

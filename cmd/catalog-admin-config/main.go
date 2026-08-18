@@ -52,7 +52,6 @@ func main() {
 		panic("init logger: " + err.Error())
 	}
 
-	catmetrics.Register()
 	httpadapter.SetLogger(log)
 	valkeyadapter.SetLogger(log)
 
@@ -91,6 +90,13 @@ func main() {
 	pgCfg.DSN = pgadapter.ApplyStatementTimeout(pgCfg.DSN)
 	validatePostgresConfig(appEnv, pgCfg.DSN, pgWarnings)
 
+	// pgcommon.Config.Logger (pgcommon v1.2.0+, pkg/domain.Logger) routes the
+	// slow-query tracer's WARN-level logs through this service's own
+	// structured logger instead of being silently dropped — Config.Logger
+	// was previously typed against pgcommon's unexported port.Logger and so
+	// could not be implemented from outside the module at all.
+	pgCfg.Logger = pgadapter.NewDomainLogger(log)
+
 	migrationDSN := pgadapter.MigrationDSNFromEnv(pgCfg.DSN)
 
 	pool, err := pgcommon.NewPool(context.Background(), pgCfg)
@@ -102,7 +108,7 @@ func main() {
 	ctx, cancelBackground := context.WithCancel(context.Background())
 	defer cancelBackground()
 
-	if err := pgadapter.RunMigrations(ctx, migrationDSN); err != nil {
+	if err := pgadapter.RunMigrations(ctx, migrationDSN, pgadapter.NewDomainLogger(log)); err != nil {
 		panic(fmt.Sprintf("domain migrations: %v", err))
 	}
 
@@ -163,6 +169,14 @@ func main() {
 		}),
 		Cache: cache,
 	})
+
+	// catalog_admin_* business metrics (LLD §13.2) are registered on
+	// gincommon's own registerer/const-labels, not prometheus.DefaultRegisterer
+	// directly, so they stay consistent with gincommon's own http_requests_total
+	// etc. — same registry, same {service, version} labels. Must run after
+	// NewRouter above: ObservabilityMiddlewares (inside NewRouter) is what
+	// populates MetricsRegisterer()/MetricsConstLabels().
+	catmetrics.Register(gincommon.MetricsRegisterer(), gincommon.MetricsConstLabels())
 
 	// ── 7. Graceful shutdown ───────────────────────────────────────────────
 	srv := &http.Server{
