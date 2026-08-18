@@ -195,6 +195,15 @@ func (w *bufferedWriter) WriteString(s string) (int, error) {
 // unchanged from iam-org-membership's middleware.go, trimmed to this
 // service's smaller error catalogue.
 func HandleError(c *gin.Context, err error) {
+	// Detect oversized body from chunked requests that bypass the
+	// Content-Length pre-check in the router middleware (LLD §20 CA-SEC-01).
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		er := newErrorResponse(c, "request_entity_too_large", "request body must not exceed 1 MB", nil)
+		er.Status = http.StatusRequestEntityTooLarge
+		c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, er)
+		return
+	}
 	var de *domain.DomainError
 	if errors.As(err, &de) {
 		status := domainErrorStatus(de)

@@ -98,8 +98,21 @@ func NewRouter(cfg RouterConfig) *Router {
 
 	registerDocsRoutes(r, cfg)
 
-	// 1 MB body cap to prevent memory exhaustion via oversized JSON payloads.
+	// 1 MB body cap. Content-Length pre-check returns 413 immediately for
+	// clients that send the header (covers curl, most HTTP clients, and all
+	// SDK callers). MaxBytesReader is kept as a second line of defence for
+	// chunked requests that omit Content-Length — HandleError detects the
+	// resulting *http.MaxBytesError and also returns 413 (LLD §20 CA-SEC-01).
 	r.Use(func(c *gin.Context) {
+		if c.Request.ContentLength > 1<<20 {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, map[string]any{
+				"error":   "request_entity_too_large",
+				"code":    "request_entity_too_large",
+				"message": "request body must not exceed 1 MB",
+				"status":  http.StatusRequestEntityTooLarge,
+			})
+			return
+		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 		c.Next()
 	})
