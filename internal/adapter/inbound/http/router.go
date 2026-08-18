@@ -83,6 +83,18 @@ func NewRouter(cfg RouterConfig) *Router {
 	// Return 405 Method Not Allowed (with Allow header) when a path exists
 	// but the HTTP method is not registered, instead of the default 404.
 	r.HandleMethodNotAllowed = true
+	// Gin's built-in 405 handler returns an empty body. Override it so every
+	// 405 carries the same JSON error envelope as all other error responses
+	// (LLD §20). The Allow header is preserved — Gin sets it before this
+	// handler fires.
+	r.NoMethod(func(c *gin.Context) {
+		c.JSON(http.StatusMethodNotAllowed, map[string]any{
+			"error":   "method_not_allowed",
+			"code":    "method_not_allowed",
+			"message": c.Request.Method + " is not allowed on this endpoint",
+			"status":  http.StatusMethodNotAllowed,
+		})
+	})
 
 	registerDocsRoutes(r, cfg)
 
