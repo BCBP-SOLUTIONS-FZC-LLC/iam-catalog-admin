@@ -43,6 +43,45 @@ func TestReadyz_NoAuthRequired_Returns200WhenHealthy(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, string(raw))
 }
 
+// Scenario CAH-H-03: GET /readyz → 503 {database:down} when Postgres is unavailable.
+// Closes the pool after env creation to simulate the DB going away mid-run
+// (same technique as CAT-FAIL-1 tests — connection lost → pgcommon.Pool.Health
+// returns Healthy:false → the pingerFunc in the router returns an error → 503).
+func TestReadyz_PostgresDown_Returns503(t *testing.T) {
+	env := newE2EEnv(t)
+
+	// Simulate Postgres going away: closing the pool makes pool.Health()
+	// return Healthy:false, which the /readyz handler turns into 503.
+	// pgcommon.Pool.Close is idempotent — the t.Cleanup registered by
+	// newE2EEnv will safely call it again without side-effects.
+	env.pool.Close()
+
+	status, raw := doJSON(t, env, http.MethodGet, "/readyz", nil, nil)
+	require.Equal(t, http.StatusServiceUnavailable, status, string(raw))
+	body := decodeMap(t, raw)
+	assert.Equal(t, "not ready", body["status"])
+	assert.Equal(t, "down", body["database"])
+}
+
+// Scenario CA-BL-06: POST /api/v1/operator/departments → 503 dependency_unavailable
+// when Postgres is unreachable. Closes the connection pool to cut DB connectivity,
+// then asserts the service propagates the failure as a 503 with the
+// dependency_unavailable error code (LLD §20 / CAT-FAIL-2).
+func TestBusinessLogic_PostgresDown_Returns503(t *testing.T) {
+	env := newE2EEnv(t)
+
+	// Cut DB connectivity — subsequent repository calls will fail with a
+	// pgx connection error, which pgcommon.WrapConnErr maps to
+	// ErrDependencyUnavailable → HandleError → 503.
+	env.pool.Close()
+
+	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments",
+		operatorHeaders,
+		map[string]any{"code": "pg_down_bl06", "name": "Postgres Down Test"})
+	require.Equal(t, http.StatusServiceUnavailable, status, string(raw))
+	assert.Equal(t, "dependency_unavailable", decodeMap(t, raw)["code"])
+}
+
 // Scenario CA-OBS-01: catalog_admin_writes_total increments after dept create
 func TestObservability_DeptCreate_WritesMetricIncrements(t *testing.T) {
 	env := newE2EEnv(t)
