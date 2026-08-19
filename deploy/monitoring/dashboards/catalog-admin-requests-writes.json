@@ -1,0 +1,194 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Prometheus datasource scraping iam-catalog-admin's /metrics port (LLD §13.2/§13.4).",
+      "type": "datasource",
+      "pluginId": "prometheus"
+    }
+  ],
+  "title": "Catalog / Admin Config — Requests & Writes",
+  "description": "LLD §13.4's 'Requests & Writes' dashboard: request rate/latency for CAT-1 through CAT-I2 by route, cat:departments/cat:plans cache hit ratio, and optimistic-lock-conflict rate. Place in a 'Catalog / Admin Config' Grafana folder alongside the platform's existing 'IAM' folder. The other two panels §13.4 names — 'Consumer Health' (sourced from iam-org-membership's/iam-group-mapping's own metrics, not this service's) and 'Migration Soak' (retired — the Wave-1 routes it would watch no longer exist) — are out of this dashboard's scope; see §13.4 for why.",
+  "tags": ["iam", "catalog-admin"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Prometheus"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Traffic — CAT-1 through CAT-I2",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Request rate by route + status",
+      "description": "catalog_admin_requests_total (LLD §13.2) — every CAT-1 through CAT-I2 terminal outcome, exact status code.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (route, status) (rate(catalog_admin_requests_total{job=\"iam-catalog-admin\"}[5m]))",
+          "legendFormat": "{{route}} [{{status}}]",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Request latency by route (p50/p90/p99)",
+      "description": "catalog_admin_request_duration_seconds (LLD §13.2) — a Summary, so quantiles are separate series with a quantile label already computed client-side; no histogram_quantile() needed. Feeds the §13.1 SLOs (40ms read / 100ms write p99).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 0 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "catalog_admin_request_duration_seconds{job=\"iam-catalog-admin\"}",
+          "legendFormat": "{{route}} p{{quantile}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "cat:departments / cat:plans cache",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Cache hit ratio by key",
+      "description": "Derived from catalog_admin_cache_hits_total/catalog_admin_cache_misses_total (LLD §13.2) — a raw ratio gauge was deliberately not instrumented as a third, redundant series; this is the documented PromQL derivation from the two counters that already exist.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (key) (rate(catalog_admin_cache_hits_total{job=\"iam-catalog-admin\"}[5m])) / (sum by (key) (rate(catalog_admin_cache_hits_total{job=\"iam-catalog-admin\"}[5m])) + sum by (key) (rate(catalog_admin_cache_misses_total{job=\"iam-catalog-admin\"}[5m])))",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Cache hits vs. misses (raw rate)",
+      "description": "The two underlying counters behind the ratio panel — useful when the ratio alone hides a low-traffic period (e.g. 0/0 during a quiet window).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (key) (rate(catalog_admin_cache_hits_total{job=\"iam-catalog-admin\"}[5m]))",
+          "legendFormat": "{{key}} hits",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (key) (rate(catalog_admin_cache_misses_total{job=\"iam-catalog-admin\"}[5m]))",
+          "legendFormat": "{{key}} misses",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Writes — CAT-1, CAT-2, CAT-5",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Writes by table + op",
+      "description": "catalog_admin_writes_total (LLD §13.2) — departments/plans inserts and updates.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "fillOpacity": 30 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (table, op) (rate(catalog_admin_writes_total{job=\"iam-catalog-admin\"}[5m]))",
+          "legendFormat": "{{table}} {{op}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Optimistic-lock-conflict rate by table",
+      "description": "catalog_admin_optimistic_lock_conflicts_total (LLD §13.2) — feeds IAMCatalogAdminOptimisticLockConflicts (deploy/monitoring/app-alerts.yml): writes are rare enough that any sustained nonzero rate for >15m is itself diagnostic of a caller retry-storm or tooling bug.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.001 }] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (table) (rate(catalog_admin_optimistic_lock_conflicts_total{job=\"iam-catalog-admin\"}[5m]))",
+          "legendFormat": "{{table}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

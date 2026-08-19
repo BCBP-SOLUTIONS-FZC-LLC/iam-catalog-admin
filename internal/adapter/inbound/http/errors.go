@@ -11,12 +11,11 @@ import (
 // own ErrorResponse — flat, with both `error`+`code` and
 // `request_id`+`trace_id` for cross-service correlation. c may be nil in
 // tests; trace_id and request_id are then omitted.
-func newErrorResponse(c *gin.Context, code, message string, details []ValidationError) ErrorResponse {
+func newErrorResponse(c *gin.Context, code, message string) ErrorResponse {
 	er := ErrorResponse{
 		Error:   code,
 		Code:    code,
 		Message: message,
-		Details: details,
 	}
 	if c != nil {
 		span := trace.SpanFromContext(c.Request.Context())

@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewErrorResponse_NilContext(t *testing.T) {
-	er := newErrorResponse(nil, "some_code", "message", nil)
+	er := newErrorResponse(nil, "some_code", "message")
 	assert.Equal(t, "some_code", er.Code)
 	assert.Empty(t, er.RequestID)
 	assert.Empty(t, er.TraceID)
@@ -28,7 +28,7 @@ func TestNewErrorResponse_RequestIDFromRequestHeader(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	c.Request.Header.Set(gincommon.HeaderRequestID, "req-from-request-header")
 
-	er := newErrorResponse(c, "some_code", "message", nil)
+	er := newErrorResponse(c, "some_code", "message")
 	assert.Equal(t, "req-from-request-header", er.RequestID)
 }
 
@@ -42,6 +42,6 @@ func TestNewErrorResponse_RequestIDFromResponseHeader(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	c.Writer.Header().Set(gincommon.HeaderRequestIDResponse, "req-from-response-header")
 
-	er := newErrorResponse(c, "some_code", "message", nil)
+	er := newErrorResponse(c, "some_code", "message")
 	assert.Equal(t, "req-from-response-header", er.RequestID)
 }

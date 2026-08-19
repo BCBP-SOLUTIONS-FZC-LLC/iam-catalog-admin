@@ -524,12 +524,6 @@ const docTemplate = `{
                     "type": "string",
                     "example": "not_found"
                 },
-                "details": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/http.ValidationError"
-                    }
-                },
                 "error": {
                     "type": "string",
                     "example": "not_found"
@@ -671,20 +665,6 @@ const docTemplate = `{
                     }
                 }
             }
-        },
-        "http.ValidationError": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "field": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
         }
     },
     "securityDefinitions": {
@@ -712,7 +692,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8081",
+	Host:             "localhost:8080",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "IAM Catalog / Admin Config API",

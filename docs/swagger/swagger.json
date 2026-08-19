@@ -12,7 +12,7 @@
         },
         "version": "1.0"
     },
-    "host": "localhost:8081",
+    "host": "localhost:8080",
     "basePath": "/api/v1",
     "paths": {
         "/departments": {
@@ -503,12 +503,6 @@
                     "type": "string",
                     "example": "not_found"
                 },
-                "details": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/http.ValidationError"
-                    }
-                },
                 "error": {
                     "type": "string",
                     "example": "not_found"
@@ -648,20 +642,6 @@
                     "items": {
                         "$ref": "#/definitions/http.PlanResponse"
                     }
-                }
-            }
-        },
-        "http.ValidationError": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "field": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
                 }
             }
         }

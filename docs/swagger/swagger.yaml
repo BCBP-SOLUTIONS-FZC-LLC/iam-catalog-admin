@@ -48,10 +48,6 @@ definitions:
       code:
         example: not_found
         type: string
-      details:
-        items:
-          $ref: '#/definitions/http.ValidationError'
-        type: array
       error:
         example: not_found
         type: string
@@ -148,15 +144,6 @@ definitions:
         items:
           $ref: '#/definitions/http.PlanResponse'
         type: array
-    type: object
-  http.ValidationError:
-    properties:
-      code:
-        type: string
-      field:
-        type: string
-      message:
-        type: string
     type: object
 host: localhost:8080
 info:

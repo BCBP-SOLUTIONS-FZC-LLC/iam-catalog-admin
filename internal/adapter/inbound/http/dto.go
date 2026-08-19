@@ -4,22 +4,23 @@ package http
 
 // ErrorResponse is the flat JSON error envelope shared with every other
 // IAM service so clients parse one shape platform-wide.
+//
+// Some error codes carry additional, code-specific top-level fields beyond
+// the ones below — e.g. optimistic_lock_conflict adds record_version,
+// field_immutable adds field (LLD §20) — set via domain.DomainError.WithDetails
+// and merged flatly onto the response body by errorResponseWithDetails
+// (middleware.go), not nested under a details key. There is deliberately no
+// generic details field on this struct: an earlier revision had one
+// (Details []ValidationError) that Swagger advertised but no code path ever
+// populated, since every actual newErrorResponse call site passed nil —
+// removed rather than left to describe a shape that never appears on the wire.
 type ErrorResponse struct {
-	Error     string            `json:"error" example:"not_found"`
-	Status    int               `json:"status" example:"404"`
-	TraceID   string            `json:"trace_id,omitempty"`
-	RequestID string            `json:"request_id,omitempty"`
-	Code      string            `json:"code" example:"not_found"`
-	Message   string            `json:"message" example:"resource not found"`
-	Details   []ValidationError `json:"details,omitempty"`
-}
-
-// ValidationError is a per-field violation, populated on 422s that carry
-// structured field-level detail.
-type ValidationError struct {
-	Field   string `json:"field"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Error     string `json:"error" example:"not_found"`
+	Status    int    `json:"status" example:"404"`
+	TraceID   string `json:"trace_id,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+	Code      string `json:"code" example:"not_found"`
+	Message   string `json:"message" example:"resource not found"`
 }
 
 // ── Departments (CAT-1, CAT-2, CAT-6, CAT-7) ─────────────────────────────

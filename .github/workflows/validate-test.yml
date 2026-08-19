@@ -1,12 +1,10 @@
 # Reusable workflow — test gate.
-# Race detector (unit · postgres · e2e) + coverage.
+# Race detector (unit · postgres · e2e) + coverage + architecture lint.
 # Called by ci.yml and release.yml. Gates trivy and smoke.
 #
-# Trimmed from iam-user-profile's validate-test.yml: no go-arch-lint (no
-# .go-arch-lint.yml config here yet), no Swagger staleness check (this
-# service has no Swagger setup), no event-schema sync check (no
-# 
-API/eventschema — this service publishes no events, LLD §10).
+# Trimmed from iam-user-profile's validate-test.yml: no Swagger staleness
+# check (this service has no Swagger setup), no event-schema sync check (no
+# API/eventschema — this service publishes no events, LLD §10).
 name: Validate / Test
 
 "on":
@@ -93,3 +91,16 @@ jobs:
           path: coverage.out
           if-no-files-found: ignore
           retention-days: 30
+
+      # Enforces the hexagonal dependency rules defined in .go-arch-lint.yml
+      # (LLD §4.2): domain imports nothing internal, port imports only
+      # domain, service imports only domain+port, adapters implement port
+      # and use domain types, nothing in core/ imports adapter/.
+      - name: Cache go-arch-lint binary
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/go/bin
+          key: go-arch-lint-${{ runner.os }}-v1.15.0
+
+      - name: Architecture lint
+        run: bash .github/scripts/arch-lint.sh

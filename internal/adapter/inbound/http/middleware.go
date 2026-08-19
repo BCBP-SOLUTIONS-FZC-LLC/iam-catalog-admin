@@ -58,14 +58,14 @@ func IdentityBridgeMiddleware() gin.HandlerFunc {
 		} else if id, err := uuid.Parse(platformRc.UserID); err == nil {
 			userID = id
 		} else {
-			er := newErrorResponse(c, "missing_identity_headers", "x-user-id header is not a valid UUID", nil)
+			er := newErrorResponse(c, "missing_identity_headers", "x-user-id header is not a valid UUID")
 			er.Status = http.StatusUnauthorized
 			c.AbortWithStatusJSON(http.StatusUnauthorized, er)
 			return
 		}
 		tenantID, err := uuid.Parse(platformRc.TenantID)
 		if err != nil {
-			er := newErrorResponse(c, "missing_identity_headers", "x-tenant-id header is not a valid UUID", nil)
+			er := newErrorResponse(c, "missing_identity_headers", "x-tenant-id header is not a valid UUID")
 			er.Status = http.StatusUnauthorized
 			c.AbortWithStatusJSON(http.StatusUnauthorized, er)
 			return
@@ -96,7 +96,7 @@ func RequireJSONContentType() gin.HandlerFunc {
 			return
 		}
 		if c.ContentType() != "application/json" {
-			er := newErrorResponse(c, "unsupported_media_type", "Content-Type must be application/json", nil)
+			er := newErrorResponse(c, "unsupported_media_type", "Content-Type must be application/json")
 			er.Status = http.StatusUnsupportedMediaType
 			c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, er)
 			return
@@ -112,7 +112,7 @@ func RequireSystemRole() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rc, ok := requestctx.FromContext(c.Request.Context())
 		if !ok || !rc.HasRole("iam-system") {
-			er := newErrorResponse(c, "insufficient_role", "internal route requires iam-system role", nil)
+			er := newErrorResponse(c, "insufficient_role", "internal route requires iam-system role")
 			er.Status = http.StatusForbidden
 			c.AbortWithStatusJSON(http.StatusForbidden, er)
 			return
@@ -128,7 +128,7 @@ func RequireOperatorRole() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rc, ok := requestctx.FromContext(c.Request.Context())
 		if !ok || !rc.IsOperator() {
-			er := newErrorResponse(c, "insufficient_role", "operator route requires platform_operator role", nil)
+			er := newErrorResponse(c, "insufficient_role", "operator route requires platform_operator role")
 			er.Status = http.StatusForbidden
 			c.AbortWithStatusJSON(http.StatusForbidden, er)
 			return
@@ -199,7 +199,7 @@ func HandleError(c *gin.Context, err error) {
 	// Content-Length pre-check in the router middleware (LLD §20 CA-SEC-01).
 	var maxErr *http.MaxBytesError
 	if errors.As(err, &maxErr) {
-		er := newErrorResponse(c, "request_entity_too_large", "request body must not exceed 1 MB", nil)
+		er := newErrorResponse(c, "request_entity_too_large", "request body must not exceed 1 MB")
 		er.Status = http.StatusRequestEntityTooLarge
 		c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, er)
 		return
@@ -207,7 +207,7 @@ func HandleError(c *gin.Context, err error) {
 	var de *domain.DomainError
 	if errors.As(err, &de) {
 		status := domainErrorStatus(de)
-		body := newErrorResponse(c, de.Code, de.Message, nil)
+		body := newErrorResponse(c, de.Code, de.Message)
 		body.Status = status
 		mergedBody := errorResponseWithDetails(body, de.Details)
 		c.AbortWithStatusJSON(status, mergedBody)
@@ -216,7 +216,7 @@ func HandleError(c *gin.Context, err error) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if isDBUnavailableSQLState(pgErr.Code) {
-			er := newErrorResponse(c, domain.ErrDBUnavailable.Error(), "database unavailable", nil)
+			er := newErrorResponse(c, domain.ErrDBUnavailable.Error(), "database unavailable")
 			er.Status = http.StatusServiceUnavailable
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, er)
 			return
@@ -234,7 +234,7 @@ func HandleError(c *gin.Context, err error) {
 	} else {
 		log.Printf("[DEBUG] unhandled 500 error type=%T value=%v", err, err)
 	}
-	er := newErrorResponse(c, "internal_error", "an unexpected error occurred", nil)
+	er := newErrorResponse(c, "internal_error", "an unexpected error occurred")
 	er.Status = http.StatusInternalServerError
 	c.AbortWithStatusJSON(http.StatusInternalServerError, er)
 }

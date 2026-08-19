@@ -432,11 +432,9 @@ func TestPatchDepartment_OCCResponse_IncludesVersionInfo(t *testing.T) {
 
 	body := decodeMap(t, raw)
 	assert.Equal(t, "optimistic_lock_conflict", body["code"])
-	hasVersion := body["record_version"] != nil
-	if details, ok := body["details"].(map[string]any); ok {
-		hasVersion = hasVersion || details["record_version"] != nil || details["current_version"] != nil
-	}
-	assert.True(t, hasVersion, "409 OCC response must surface current record_version: %s", string(raw))
+	// record_version is a top-level field (WithDetails merges flatly onto
+	// the response body, not nested under a "details" key — LLD §20).
+	assert.NotNil(t, body["record_version"], "409 OCC response must surface current record_version: %s", string(raw))
 }
 
 // Scenario CA-BL-01: record_version missing from body → decoded as 0 → 409 (NOT 400)
