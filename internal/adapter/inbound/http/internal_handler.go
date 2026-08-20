@@ -27,6 +27,7 @@ func NewInternalHandler(depts *service.DepartmentService, plans *service.PlanSer
 // @Tags         internal
 // @Produce      json
 // @Success      200  {object}  InternalDepartmentsResponse
+// @Failure      401  {object}  ErrorResponse
 // @Failure      403  {object}  ErrorResponse
 // @Router       /internal/departments [get]
 func (h *InternalHandler) Departments(c *gin.Context) {
@@ -55,6 +56,7 @@ func (h *InternalHandler) Departments(c *gin.Context) {
 // @Tags         internal
 // @Produce      json
 // @Success      200  {object}  InternalPlansResponse
+// @Failure      401  {object}  ErrorResponse
 // @Failure      403  {object}  ErrorResponse
 // @Router       /internal/plans [get]
 func (h *InternalHandler) Plans(c *gin.Context) {

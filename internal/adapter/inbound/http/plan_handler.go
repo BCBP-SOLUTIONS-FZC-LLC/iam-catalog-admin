@@ -37,6 +37,7 @@ func planToResponse(p *domain.Plan) PlanResponse {
 // @Tags         operator
 // @Produce      json
 // @Success      200  {object}  PlansListResponse
+// @Failure      401  {object}  ErrorResponse
 // @Failure      403  {object}  ErrorResponse
 // @Router       /operator/plans [get]
 func (h *PlanHandler) List(c *gin.Context) {
@@ -65,6 +66,7 @@ func (h *PlanHandler) List(c *gin.Context) {
 // @Produce      json
 // @Param        code  path      string  true  "Plan code"  Enums(starter, pro, enterprise)
 // @Success      200   {object}  PlanResponse
+// @Failure      401   {object}  ErrorResponse
 // @Failure      403   {object}  ErrorResponse
 // @Failure      404   {object}  ErrorResponse
 // @Router       /operator/plans/{code} [get]
@@ -95,6 +97,7 @@ func (h *PlanHandler) Get(c *gin.Context) {
 // @Param        request  body      PlanPatchRequest   true  "Plan patch"
 // @Success      200      {object}  PlanResponse
 // @Failure      400      {object}  ErrorResponse  "no_mutable_field | invalid_feature_value | validation_error"
+// @Failure      401      {object}  ErrorResponse
 // @Failure      403      {object}  ErrorResponse
 // @Failure      404      {object}  ErrorResponse
 // @Failure      409      {object}  ErrorResponse  "optimistic_lock_conflict"

@@ -64,6 +64,7 @@ func (h *DepartmentHandler) List(c *gin.Context) {
 // @Produce      json
 // @Param        id   path      string  true  "Department UUID"  format(uuid)
 // @Success      200  {object}  DepartmentResponse
+// @Failure      401  {object}  ErrorResponse
 // @Failure      404  {object}  ErrorResponse
 // @Router       /departments/{id} [get]
 func (h *DepartmentHandler) Get(c *gin.Context) {
@@ -92,6 +93,7 @@ func (h *DepartmentHandler) Get(c *gin.Context) {
 // @Param        request  body      DepartmentCreateRequest  true  "Department payload"
 // @Success      201      {object}  DepartmentResponse
 // @Failure      400      {object}  ErrorResponse
+// @Failure      401      {object}  ErrorResponse
 // @Failure      403      {object}  ErrorResponse
 // @Failure      409      {object}  ErrorResponse  "duplicate_code"
 // @Router       /operator/departments [post]
@@ -127,6 +129,7 @@ func (h *DepartmentHandler) Create(c *gin.Context) {
 // @Param        request  body      DepartmentPatchRequest    true  "Patch payload"
 // @Success      200      {object}  DepartmentResponse
 // @Failure      400      {object}  ErrorResponse
+// @Failure      401      {object}  ErrorResponse
 // @Failure      403      {object}  ErrorResponse
 // @Failure      404      {object}  ErrorResponse
 // @Failure      409      {object}  ErrorResponse  "optimistic_lock_conflict"
@@ -188,6 +191,7 @@ func (h *DepartmentHandler) Patch(c *gin.Context) {
 // @Tags         operator
 // @Produce      json
 // @Param        id   path  string  true  "Department UUID"  format(uuid)
+// @Failure      401  {object}  ErrorResponse
 // @Failure      403  {object}  ErrorResponse
 // @Failure      405  {object}  ErrorResponse
 // @Router       /operator/departments/{id} [delete]

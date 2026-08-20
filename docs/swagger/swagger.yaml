@@ -200,6 +200,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/http.DepartmentResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -216,6 +220,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/http.InternalDepartmentsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -232,6 +240,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/http.InternalPlansResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -262,6 +274,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -285,6 +301,10 @@ paths:
       produces:
       - application/json
       responses:
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -325,6 +345,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -353,6 +377,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/http.PlansListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -379,6 +407,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/http.PlanResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -420,6 +452,10 @@ paths:
             $ref: '#/definitions/http.PlanResponse'
         "400":
           description: no_mutable_field | invalid_feature_value | validation_error
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/http.ErrorResponse'
         "403":
