@@ -196,7 +196,8 @@ func (w *bufferedWriter) WriteString(s string) (int, error) {
 // service's smaller error catalogue.
 func HandleError(c *gin.Context, err error) {
 	// Detect oversized body from chunked requests that bypass the
-	// Content-Length pre-check in the router middleware (LLD §20 CA-SEC-01).
+	// Content-Length pre-check in the router middleware (LLD §20,
+	// request_entity_too_large row).
 	var maxErr *http.MaxBytesError
 	if errors.As(err, &maxErr) {
 		er := newErrorResponse(c, "request_entity_too_large", "request body must not exceed 1 MB")

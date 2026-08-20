@@ -108,7 +108,8 @@ func NewRouter(cfg RouterConfig) *Router {
 	// clients that send the header (covers curl, most HTTP clients, and all
 	// SDK callers). MaxBytesReader is kept as a second line of defence for
 	// chunked requests that omit Content-Length — HandleError detects the
-	// resulting *http.MaxBytesError and also returns 413 (LLD §20 CA-SEC-01).
+	// resulting *http.MaxBytesError and also returns 413 (LLD §20,
+	// request_entity_too_large row).
 	r.Use(func(c *gin.Context) {
 		if c.Request.ContentLength > 1<<20 {
 			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, map[string]any{
