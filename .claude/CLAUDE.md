@@ -92,11 +92,21 @@ into separate `.coverage/{unit,postgres,e2e}.out` profiles, then `scripts/merge_
 them (max-count strategy) into `coverage.out` — a Postgres-only file only shows real coverage once
 `test/postgres`'s profile is merged with `test/unit`'s. CI's coverage gate is **≥ 98%** (this
 service's own established baseline — a much smaller surface than `iam-user-profile`'s 95%, with no
-outbox/RLS/event machinery to leave deliberately uncovered). Currently at **98.9%** (242 test
-scenarios, per the most recent coverage-uplift pass — see CHANGELOG.md's `[Unreleased]` section).
+outbox/RLS/event machinery to leave deliberately uncovered). Currently at **99.6%**, verified via
+`make cover-func` — see CHANGELOG.md's `[Unreleased]` section for what's landed since the gate was
+set.
 
 **Testcontainers note:** Postgres integration tests spin up a real container via
 `testcontainers-go`; set `TESTCONTAINERS_RYUK_DISABLED=true` in CI to skip the reaper sidecar.
+
+**Parallelism:** every test in `test/postgres`/`test/e2e` calls `t.Parallel()` — each one already
+builds its own fully isolated Postgres container (and, for e2e, its own `miniredis` instance and
+`httptest.Server`), so running them concurrently (bounded by `GOMAXPROCS`) is safe and turns the
+per-test ~1s container-boot cost from a serial tax into a parallel one. Measured on a 10-CPU box:
+`test/postgres` 31s → 8s, `test/e2e` 220s → 50s. A new test in either package should call
+`t.Parallel()` too, right after `t.Helper()`/before any setup — omitting it silently falls back to
+running that one test serially against the others, not a correctness bug but a quiet regression in
+suite wall-time.
 
 ## Architecture
 
@@ -145,7 +155,7 @@ iam-catalog-admin/
 │           │   ├── db.go              # ApplyStatementTimeout, MigrationDSNFromEnv, withPool, wrapConnErr
 │           │   ├── logger.go          # NewDomainLogger — bridges pgcommon's slow-query logger
 │           │   ├── migrate.go         # RunMigrations (embed.FS, bypasses PgBouncer)
-│           │   └── migrations/        # 000001–000004
+│           │   └── migrations/        # 000001_init_schema (single consolidated migration; pre-prod)
 │           ├── valkey/                # cache impl (go-redis/v9)
 │           │   └── cache.go           # DepartmentsKey/PlansKey constants, hit/miss metrics
 │           └── metrics/                # custom Prometheus counters/summary (catalog_admin_* prefix)
@@ -160,7 +170,7 @@ iam-catalog-admin/
 │   │   ├── README.md                  # index of mermaid diagrams
 │   │   └── mermaid/                   # layer-model.mmd, write-flow.mmd, cache-strategy.mmd
 │   └── lld/
-│       └── iam-lld-catalog-admin-config-service.md  # the authoritative LLD (currently v1.23)
+│       └── iam-lld-catalog-admin-config-service.md  # the authoritative LLD (currently v1.26)
 ├── scripts/                           # local dev + build tooling only
 │   ├── merge_coverage.py              # merges per-suite coverage profiles for the CI gate
 │   └── patch-swagger-extensions.py    # post-processes docs/swagger during `make swag`
@@ -298,7 +308,7 @@ dependency, which is how Clean Architecture is *supposed* to work there — impo
   composition-root call path.
 - **`pkg/requestctx/context.go`** — `RequestContext{UserID, TenantID, Roles, ClientIP, UserAgent}`,
   `HasRole`, `IsOperator()` (`platform_operator` role), `IsSystem()` (`iam-system` role).
-- **`docs/lld/iam-lld-catalog-admin-config-service.md`** — the authoritative LLD (currently v1.23).
+- **`docs/lld/iam-lld-catalog-admin-config-service.md`** — the authoritative LLD (currently v1.26).
   Read this before making any contract-level change; it carries a decision register (CAT-D1
   through CAT-D12, §14) and a full error taxonomy (§20) that must stay in sync with the code.
 

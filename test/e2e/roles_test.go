@@ -17,15 +17,16 @@ import (
 // iam-org-membership's own TestRLS_Case1b_AppRoleHasNoBYPASSRLS, which
 // this test mirrors). Neither table in this service is RLS-protected —
 // there is nothing for catalog_admin_app to bypass — but the grant is
-// withheld anyway, in defense in depth, per migration
-// 000003_roles_grants.up.sql's own stated rationale, and this is the test
-// that actually holds that line to account.
+// withheld anyway, in defense in depth, per 000001_init_schema.up.sql's
+// own stated rationale, and this is the test that actually holds that
+// line to account.
 func TestRoles_AppRoleHasNoBYPASSRLS(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	var bypass bool
 	err := env.rawPool.QueryRow(context.Background(), `
 		SELECT rolbypassrls FROM pg_roles WHERE rolname = 'catalog_admin_app'`).Scan(&bypass)
-	require.NoError(t, err, "catalog_admin_app role must exist (created by 000003_roles_grants.up.sql)")
+	require.NoError(t, err, "catalog_admin_app role must exist (created by 000001_init_schema.up.sql)")
 	assert.False(t, bypass, "catalog_admin_app must NOT hold BYPASSRLS (LLD §9)")
 }

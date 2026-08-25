@@ -17,6 +17,7 @@ import (
 // column contains the JSON literal `null` (distinct from SQL NULL, which the
 // NOT NULL constraint blocks).
 func TestPlanRepository_ScanPlan_NullJsonbFeatureSet(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()
@@ -33,6 +34,7 @@ func TestPlanRepository_ScanPlan_NullJsonbFeatureSet(t *testing.T) {
 // planUpdateFromTx when the UPDATE's RETURNING row has a malformed feature_set
 // that makes scanPlan fail with a non-ErrNoRows error.
 func TestPlanRepository_Update_MainScanError(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()

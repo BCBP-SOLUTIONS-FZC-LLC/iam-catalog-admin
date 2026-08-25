@@ -51,8 +51,8 @@ against. See §2 below for the fully-qualified paths a mesh caller should use.
 Every write endpoint re-checks the `platform_operator` role inside the handler in addition to the
 route-group middleware (defense-in-depth, mirrors O&M's AUTH-6 pattern). Full request/response
 shapes and error codes: `internal/adapter/inbound/http/dto.go` and the handler doc-comments in the
-same package (`@Summary`/`@Failure` annotations, swaggo-compatible if OpenAPI generation is added
-later).
+same package (`@Summary`/`@Failure` swaggo annotations — `make swag` regenerates the checked-in
+`docs/swagger/`, served live at `/swagger/*any`, see `DOCS_ENABLED` below).
 
 ## Architecture
 
@@ -107,7 +107,7 @@ consumer should replicate.
 2. **Bulk read** — `GET /api/v1/internal/departments` / `GET /api/v1/internal/plans` (CAT-I1/CAT-I2).
    Cache the response for ~600s; on a live-call failure, fall back to your own longer-lived
    stale-if-error copy before ever failing an admin/JIT write path outright (LLD §11, CAT-FAIL-2).
-3. **Handling errors** — `503 catalog_service_unavailable` means this service (or its own cache)
+3. **Handling errors** — `503 catalog_unavailable` means this service (or its own cache)
    had nothing to serve; treat it exactly like any other dependency outage, never as a signal to
    guess at department/plan data.
 4. **Optimistic locking** — every write (CAT-2, CAT-5) takes `record_version` and returns `409
@@ -117,7 +117,7 @@ consumer should replicate.
 
 ### Prerequisites
 
-- Go 1.26.5+ (must match `go.mod`)
+- Go 1.26.6+ (must match `go.mod`)
 - Docker (for Postgres + Valkey — `make docker-up`, and for the testcontainers-backed
   `test-postgres`/`test-e2e` tiers)
 - `GOPRIVATE=github.com/BCBP-SOLUTIONS-FZC-LLC/*` for the private `platform-*` modules
@@ -144,6 +144,8 @@ Run `make help` for the full list.
 | `make test-e2e` | Full HTTP stack (real router + middleware) against real Postgres + Valkey |
 | `make test-ci` | All three tiers with coverage, as CI runs it |
 | `make cover` / `make cover-func` | Merged unit+postgres+e2e coverage report (requires Docker) |
+| `make swag` | Regenerate `docs/swagger/` from handler annotations |
+| `make swag-check` | Fail if `make swag` would change `docs/swagger/` (drift check; not yet wired into CI) |
 | `make install-hooks` | Install `.githooks/pre-commit` (tidy + fmt-check + lint); also run by `make setup` |
 
 ### Running a single test
@@ -183,10 +185,17 @@ integration tier, since this service has no events to test):
   Postgres + a real Valkey-protocol server (miniredis), and drives it with plain `net/http` calls
   carrying gateway-style headers.
 
+Every test in `test/postgres`/`test/e2e` calls `t.Parallel()` — each spins up its own fully
+isolated Postgres container (e2e also gets its own `miniredis` + `httptest.Server`), so they run
+concurrently rather than paying the ~1s container-boot cost one test at a time. `test/postgres`
+runs in ~8s and `test/e2e` in ~50s on a 10-CPU machine (down from ~31s/~220s before
+parallelization).
+
 ### Coverage
 
-~85% across all non-bootstrap packages (`cmd/catalog-admin-config/main.go` is verified by the e2e
-tier's actual server boot, not unit coverage). Run `make cover-func` for the current breakdown.
+≥98% merged coverage across the unit+postgres+e2e tiers (CI gate: 98%, currently 99.6% —
+verified via `make cover-func`). `cmd/catalog-admin-config/main.go` is verified by the e2e
+tier's actual server boot, not unit coverage.
 
 ## Environment variables
 
@@ -208,7 +217,8 @@ The service will not start without the variables marked **required**
 | `MIGRATION_DATABASE_URL` | ... | — | **Required if** `PG_BOUNCER_MODE=true` — migrations must bypass PgBouncer (session-scoped advisory lock) |
 | `VALKEY_URL` | `rediss://...` | — | **Required.** Cache endpoint; must be `rediss://` in `production`/`staging` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `localhost:4317` | — | Opt-in tracing; tracing is a no-op if unset |
-| `DOCS_ENABLED` | `true` | `false` | Reserved for a future OpenAPI docs surface (not yet wired) |
+| `DOCS_ENABLED` | `true` | `false` | Toggles the Swagger UI at `/swagger/*any` (`make swag` regenerates `docs/swagger/` from handler annotations). Active by default outside `production`; in `production` it takes `DOCS_ENABLED=true` and is bearer-token-gated by `DOCS_AUTH_TOKEN` (a warning is logged if enabled there without one) |
+| `DOCS_AUTH_TOKEN` | `s3cr3t` | — | Bearer token required to reach `/swagger/*any` when `DOCS_ENABLED=true` in `production` |
 
 ## Security
 

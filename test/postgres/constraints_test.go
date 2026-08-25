@@ -18,6 +18,7 @@ import (
 
 // Scenario CA2-BL-03
 func TestDepartmentRepository_SystemDeptName_Immutable(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewDepartmentRepository(pool)
@@ -35,6 +36,7 @@ func TestDepartmentRepository_SystemDeptName_Immutable(t *testing.T) {
 
 // Scenario CA-BL-03
 func TestDepartmentRepository_RecordVersion_AlwaysGT0(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewDepartmentRepository(pool)
@@ -50,6 +52,7 @@ func TestDepartmentRepository_RecordVersion_AlwaysGT0(t *testing.T) {
 // The trigger is WHEN (OLD.* IS DISTINCT FROM NEW.*) — it fires only when data
 // actually changes. This test verifies the trigger fires when name differs.
 func TestDepartmentRepository_DataChangePatch_VersionIncrements(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewDepartmentRepository(pool)
@@ -69,6 +72,7 @@ func TestDepartmentRepository_DataChangePatch_VersionIncrements(t *testing.T) {
 
 // Scenario CA3-BL-01 (DB-level defense-in-depth)
 func TestDepartmentRepository_HardDelete_BlockedByTrigger(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewDepartmentRepository(pool)
@@ -85,6 +89,7 @@ func TestDepartmentRepository_HardDelete_BlockedByTrigger(t *testing.T) {
 
 // Scenario CA1-CON-03 (DB-level)
 func TestDepartmentRepository_RetiredCode_StillUniqueConstrained(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewDepartmentRepository(pool)
@@ -106,6 +111,7 @@ func TestDepartmentRepository_RetiredCode_StillUniqueConstrained(t *testing.T) {
 
 // Scenario CA5-H-06 (DB-level)
 func TestPlanRepository_ZeroLimit_StoredAsZeroNotNull(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewPlanRepository(pool)
@@ -131,6 +137,7 @@ func TestPlanRepository_ZeroLimit_StoredAsZeroNotNull(t *testing.T) {
 
 // Scenarios CA5-H-04, CA5-H-07
 func TestPlanRepository_NullLimit_StoredAsNull(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewPlanRepository(pool)
@@ -154,6 +161,7 @@ func TestPlanRepository_NullLimit_StoredAsNull(t *testing.T) {
 
 // Scenarios CA-BV-09, CA-BV-10
 func TestPlanRepository_MaxIntLimit_Stored(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewPlanRepository(pool)
@@ -177,6 +185,7 @@ func TestPlanRepository_MaxIntLimit_Stored(t *testing.T) {
 
 // Scenario CA-BV-04
 func TestPlanRepository_FeatureSetNullValue_AcceptedAsScalar(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	ctx := context.Background()
 	repo := pgadapter.NewPlanRepository(pool)
@@ -195,6 +204,7 @@ func TestPlanRepository_FeatureSetNullValue_AcceptedAsScalar(t *testing.T) {
 
 // Scenarios CA-NOEVT-01, CA-NOEVT-05
 func TestDatabase_NoOutboxTable_NoRLSGUC(t *testing.T) {
+	t.Parallel()
 	_, rawPool := setupTestDB(t)
 	ctx := context.Background()
 

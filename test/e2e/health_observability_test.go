@@ -16,11 +16,13 @@ import (
 
 // Scenario CAH-H-04: readyz fails when Valkey unavailable
 func TestReadyz_ValkeyDown_Returns503(t *testing.T) {
+	t.Parallel()
 	t.Skip("infrastructure test — requires Valkey container to be stopped before running")
 }
 
 // Scenario CAH-H-05: GET /metrics → 200 with catalog_admin_* metric families
 func TestMetrics_CatAdminCountersPresent(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodGet, "/api/v1/departments", publicHeaders, nil) //nolint:errcheck
 
@@ -29,6 +31,7 @@ func TestMetrics_CatAdminCountersPresent(t *testing.T) {
 
 // Scenario CAH-H-06: GET /healthz requires no identity headers
 func TestHealthz_NoAuthRequired_AlwaysReady(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/healthz", nil, nil)
 	assert.Equal(t, http.StatusOK, status)
@@ -36,6 +39,7 @@ func TestHealthz_NoAuthRequired_AlwaysReady(t *testing.T) {
 
 // Scenario CAH-H-07: GET /readyz requires no identity headers
 func TestReadyz_NoAuthRequired_Returns200WhenHealthy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/readyz", nil, nil)
 	require.Equal(t, http.StatusOK, status, string(raw))
@@ -46,6 +50,7 @@ func TestReadyz_NoAuthRequired_Returns200WhenHealthy(t *testing.T) {
 // (same technique as CAT-FAIL-1 tests — connection lost → pgcommon.Pool.Health
 // returns Healthy:false → the pingerFunc in the router returns an error → 503).
 func TestReadyz_PostgresDown_Returns503(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	// Simulate Postgres going away: closing the pool makes pool.Health()
@@ -66,6 +71,7 @@ func TestReadyz_PostgresDown_Returns503(t *testing.T) {
 // then asserts the service propagates the failure as a 503 with the
 // dependency_unavailable error code (LLD §20 / CAT-FAIL-2).
 func TestBusinessLogic_PostgresDown_Returns503(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	// Cut DB connectivity — subsequent repository calls will fail with a
@@ -82,6 +88,7 @@ func TestBusinessLogic_PostgresDown_Returns503(t *testing.T) {
 
 // Scenario CA-OBS-01: catalog_admin_writes_total increments after dept create
 func TestObservability_DeptCreate_WritesMetricIncrements(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "obs_dept01", "name": "Writes Metric"}) //nolint:errcheck
@@ -91,6 +98,7 @@ func TestObservability_DeptCreate_WritesMetricIncrements(t *testing.T) {
 
 // Scenario CA-OBS-02: catalog_admin_writes_total increments after dept patch
 func TestObservability_DeptPatch_WriteUpdateMetricIncrements(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "obs_dept02", "name": "Update Metric"})
@@ -103,6 +111,7 @@ func TestObservability_DeptPatch_WriteUpdateMetricIncrements(t *testing.T) {
 
 // Scenario CA-OBS-03: catalog_admin_writes_total increments after plan patch
 func TestObservability_PlanPatch_WritesMetricIncrements(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"display_name": "Obs Plan", "record_version": 1}) //nolint:errcheck
@@ -112,6 +121,7 @@ func TestObservability_PlanPatch_WritesMetricIncrements(t *testing.T) {
 
 // Scenario CA-OBS-05 / CROSS-CA-09/10: cache counters and OCC counters present in /metrics
 func TestObservability_AllExpectedCountersPresent(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	// Trigger cache miss and hit.

@@ -20,6 +20,7 @@ import (
 
 // Scenario CA-SEC-01: request body > 1 MB → 413 Request Entity Too Large
 func TestSecurity_OversizedBody_Returns413(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	bigVal := strings.Repeat("x", 1_100_000)
 	bodyStr := fmt.Sprintf(`{"code":"sec01","name":"%s"}`, bigVal)
@@ -36,6 +37,7 @@ func TestSecurity_OversizedBody_Returns413(t *testing.T) {
 
 // Scenario CA-SEC-02: SQL injection in code field → 201 stored literally (parameterized queries)
 func TestSecurity_SQLInjectionInCode_StoredLiterally(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	injectionCode := `'; DROP TABLE departments; --`
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -46,6 +48,7 @@ func TestSecurity_SQLInjectionInCode_StoredLiterally(t *testing.T) {
 
 // Scenario CA-SEC-03: XSS payload in name → 201 stored as plain text (API is JSON, no HTML rendering)
 func TestSecurity_XSSInName_StoredAsPlainText(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	xssName := "<script>alert(1)</script>"
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -56,6 +59,7 @@ func TestSecurity_XSSInName_StoredAsPlainText(t *testing.T) {
 
 // Scenario CA-SEC-04: role name in uppercase → 403 (HasRole is case-sensitive)
 func TestSecurity_UppercaseRoleName_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", func(req *http.Request) {
 		req.Header.Set("x-user-id", "11111111-1111-1111-1111-111111111111")
@@ -71,6 +75,7 @@ func TestSecurity_UppercaseRoleName_Returns403(t *testing.T) {
 // and the role check passes → 201. Whitespace enforcement is an HTTP-layer
 // invariant, not something the service can detect at the application layer.
 func TestSecurity_RoleWithWhitespace_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", func(req *http.Request) {
 		req.Header.Set("x-user-id", "11111111-1111-1111-1111-111111111111")
@@ -83,6 +88,7 @@ func TestSecurity_RoleWithWhitespace_Returns403(t *testing.T) {
 
 // Scenario CA-SEC-06: multiple roles including platform_operator → 201 (operator found in slice)
 func TestSecurity_MultipleRolesIncludingOperator_Succeeds(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", func(req *http.Request) {
 		req.Header.Set("x-user-id", "11111111-1111-1111-1111-111111111111")
@@ -94,6 +100,7 @@ func TestSecurity_MultipleRolesIncludingOperator_Succeeds(t *testing.T) {
 
 // Scenario CA-SEC-07 / CA-HTTP-01: PUT on dept endpoint → 405 (no PUT route registered)
 func TestSecurity_PutDepartment_Returns405(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "sec07_put", "name": "Put Dept"})
@@ -110,6 +117,7 @@ func TestSecurity_PutDepartment_Returns405(t *testing.T) {
 
 // Scenario CA-SEC-08 / CA-HTTP-02: PUT on plan endpoint → 405
 func TestSecurity_PutPlan_Returns405(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodPut, env.baseURL+"/api/v1/operator/plans/pro", nil)
 	require.NoError(t, err)
@@ -122,6 +130,7 @@ func TestSecurity_PutPlan_Returns405(t *testing.T) {
 
 // Scenario CA-SEC-09: malformed x-user-id (not a UUID) → 401
 func TestSecurity_MalformedUserID_Returns401(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", func(req *http.Request) {
 		req.Header.Set("x-user-id", "definitely-not-a-uuid")
@@ -133,6 +142,7 @@ func TestSecurity_MalformedUserID_Returns401(t *testing.T) {
 
 // Scenario CA-SEC-10: path traversal attempt → 400 or 404 (Gin rejects before handler)
 func TestSecurity_PathTraversalAttempt_Returns400Or404(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodGet,
 		env.baseURL+"/api/v1/departments/../../../etc/passwd", nil)
@@ -150,6 +160,7 @@ func TestSecurity_PathTraversalAttempt_Returns400Or404(t *testing.T) {
 
 // Scenario CA-HTTP-03: POST /api/v1/operator/plans → 404 (no create route, PLAN-4)
 func TestHTTPMethod_PostPlan_Returns404OrMethodNotAllowed(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodPost, env.baseURL+"/api/v1/operator/plans",
 		bytes.NewBufferString(`{"code":"gold"}`))
@@ -164,6 +175,7 @@ func TestHTTPMethod_PostPlan_Returns404OrMethodNotAllowed(t *testing.T) {
 
 // Scenario CA-HTTP-04: DELETE /api/v1/operator/plans/pro → 404 (no delete route)
 func TestHTTPMethod_DeletePlan_Returns404OrMethodNotAllowed(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodDelete, env.baseURL+"/api/v1/operator/plans/pro", nil)
 	require.NoError(t, err)
@@ -176,6 +188,7 @@ func TestHTTPMethod_DeletePlan_Returns404OrMethodNotAllowed(t *testing.T) {
 
 // Scenario CA-HTTP-05: PATCH /api/v1/departments/:id (no /operator/ prefix) → 404
 func TestHTTPMethod_PatchPublicDept_Returns404(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "http05_pub", "name": "Public Patch"})
@@ -194,6 +207,7 @@ func TestHTTPMethod_PatchPublicDept_Returns404(t *testing.T) {
 
 // Scenario CA-HTTP-06: POST /api/v1/operator/departments/:id → 404
 func TestHTTPMethod_PostDeptWithID_Returns404(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "http06", "name": "Post With ID"})
@@ -213,6 +227,7 @@ func TestHTTPMethod_PostDeptWithID_Returns404(t *testing.T) {
 // Scenario CA-BL-07: GET /api/v1/operator/departments → 404 or 405 (no operator list route;
 // Gin returns 405 when HandleMethodNotAllowed=true and POST is registered on that path).
 func TestBusinessLogic_OperatorDeptListRoute_NotFound(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/operator/departments", operatorHeaders, nil)
 	assert.Contains(t, []int{http.StatusNotFound, http.StatusMethodNotAllowed}, status)
@@ -224,6 +239,7 @@ func TestBusinessLogic_OperatorDeptListRoute_NotFound(t *testing.T) {
 
 // Scenario CA-BV-01: very long code (200 chars) → 201 (Postgres text type, no length limit)
 func TestBoundary_VeryLongCode_Stored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	longCode := "bv01_" + strings.Repeat("a", 195)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -234,6 +250,7 @@ func TestBoundary_VeryLongCode_Stored(t *testing.T) {
 
 // Scenario CA-BV-02: very long name (500 chars) → 201
 func TestBoundary_VeryLongName_Stored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	longName := strings.Repeat("B", 500)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -244,6 +261,7 @@ func TestBoundary_VeryLongName_Stored(t *testing.T) {
 
 // Scenario CA-BV-03: very long plan display_name → 200
 func TestBoundary_VeryLongPlanDisplayName_Stored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	longName := strings.Repeat("C", 500)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
@@ -254,6 +272,7 @@ func TestBoundary_VeryLongPlanDisplayName_Stored(t *testing.T) {
 
 // Scenario CA-BV-04: feature_set with null value {key: null} → 200 (nil is valid scalar per PLAN-6d)
 func TestBoundary_FeatureSetNullValue_AcceptedAsScalar(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"feature_set": map[string]any{"nullable_flag": nil}, "record_version": 1})
@@ -262,6 +281,7 @@ func TestBoundary_FeatureSetNullValue_AcceptedAsScalar(t *testing.T) {
 
 // Scenario CA-BV-05 / CA-BL-04: feature_set={} (empty map) clears all keys
 func TestBoundary_FeatureSetEmptyMap_ClearsAllKeys(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"feature_set": map[string]any{"key": "value"}, "record_version": 1}) //nolint:errcheck
@@ -276,6 +296,7 @@ func TestBoundary_FeatureSetEmptyMap_ClearsAllKeys(t *testing.T) {
 
 // Scenario CA-BV-06: feature_set=null in body → 200, no change to feature_set
 func TestBoundary_FeatureSetNullBody_LeavesFeatureSetUnchanged(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"feature_set": map[string]any{"initial": "data"}, "record_version": 1}) //nolint:errcheck
@@ -289,6 +310,7 @@ func TestBoundary_FeatureSetNullBody_LeavesFeatureSetUnchanged(t *testing.T) {
 
 // Scenario CA-BV-08: feature_set with many keys → 200
 func TestBoundary_FeatureSetManyKeys_Stored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	fs := make(map[string]any, 50)
 	for i := 0; i < 50; i++ {
@@ -301,6 +323,7 @@ func TestBoundary_FeatureSetManyKeys_Stored(t *testing.T) {
 
 // Scenario CA-BV-09: workflow_template_limit at max int32 (2,147,483,647) → 200
 func TestBoundary_MaxWorkflowLimit_Stored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/enterprise", operatorHeaders,
 		map[string]any{"workflow_template_limit": 2147483647, "record_version": 1})
@@ -310,6 +333,7 @@ func TestBoundary_MaxWorkflowLimit_Stored(t *testing.T) {
 
 // Scenario CA-BV-10: tender_limit at max int32 → 200
 func TestBoundary_MaxTenderLimit_Stored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/enterprise", operatorHeaders,
 		map[string]any{"tender_limit": 2147483647, "record_version": 1})
@@ -318,6 +342,7 @@ func TestBoundary_MaxTenderLimit_Stored(t *testing.T) {
 
 // Scenario CA-BV-11: active_only with non-boolean value → Gin returns 200 (treats as false)
 func TestBoundary_ActiveOnlyNonBoolean_DoesNotCrash(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/departments?active_only=yes", publicHeaders, nil)
 	assert.Equal(t, http.StatusOK, status)
@@ -325,6 +350,7 @@ func TestBoundary_ActiveOnlyNonBoolean_DoesNotCrash(t *testing.T) {
 
 // Scenario CA-BV-12: code with special chars (hyphens, underscores, @) → 201
 func TestBoundary_SpecialCharsInCode_Stored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	code := "dept-123_ops"
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -339,6 +365,7 @@ func TestBoundary_SpecialCharsInCode_Stored(t *testing.T) {
 
 // Scenario CA-BL-03: record_version is always ≥ 1 on any created dept (DB CHECK enforces this)
 func TestBusinessLogic_RecordVersionAlwaysGT0(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "bl03_rv", "name": "Record Version"})
@@ -349,6 +376,7 @@ func TestBusinessLogic_RecordVersionAlwaysGT0(t *testing.T) {
 
 // Scenario CA-BL-05: concurrent POSTs with different codes → both 201
 func TestBusinessLogic_ConcurrentDifferentCodes_BothSucceed(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	results := make([]int, 2)
 	var wg sync.WaitGroup
@@ -376,6 +404,7 @@ func TestBusinessLogic_ConcurrentDifferentCodes_BothSucceed(t *testing.T) {
 // not the /swagger/* docs route — that is registered in cmd/catalog-admin-config
 // and tested by running the full binary. Skip here to avoid a false 404.
 func TestSwagger_DevEnvironment_Accessible(t *testing.T) {
+	t.Parallel()
 	t.Skip("Swagger route not registered in e2e harness — test via full binary: make run")
 }
 
@@ -387,6 +416,7 @@ func TestSwagger_DevEnvironment_Accessible(t *testing.T) {
 // Note: the DB trigger fires WHEN (OLD.* IS DISTINCT FROM NEW.*), so each patch
 // must supply data that actually differs from the current row.
 func TestIdempotency_SequentialPatches_VersionMonotonicallyIncreases(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "idemp02", "name": "Name V1"})

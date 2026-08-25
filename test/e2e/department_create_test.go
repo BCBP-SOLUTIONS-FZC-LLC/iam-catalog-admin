@@ -20,6 +20,7 @@ import (
 
 // Scenario CA1-A-01: no identity headers → 401
 func TestCreateDepartment_NoIdentityHeaders_Returns401(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", nil,
 		map[string]any{"code": "crt_a01", "name": "No Auth"})
@@ -28,6 +29,7 @@ func TestCreateDepartment_NoIdentityHeaders_Returns401(t *testing.T) {
 
 // Scenario CA1-A-02: identity present but no roles → 403
 func TestCreateDepartment_NoRoles_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", func(req *http.Request) {
 		req.Header.Set("x-user-id", "11111111-1111-1111-1111-111111111111")
@@ -38,6 +40,7 @@ func TestCreateDepartment_NoRoles_Returns403(t *testing.T) {
 
 // Scenario CA1-A-04: tenant_owner role is not sufficient → 403
 func TestCreateDepartment_TenantOwnerRole_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", func(req *http.Request) {
 		req.Header.Set("x-user-id", "11111111-1111-1111-1111-111111111111")
@@ -50,6 +53,7 @@ func TestCreateDepartment_TenantOwnerRole_Returns403(t *testing.T) {
 
 // Scenario CA1-A-03/A-05 (authorization confirmed): tenant_admin → 403; operator → 201
 func TestCreateDepartment_TenantAdminForbidden_OperatorAuthorized(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	adminStatus, _ := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", publicHeaders,
@@ -63,6 +67,7 @@ func TestCreateDepartment_TenantAdminForbidden_OperatorAuthorized(t *testing.T) 
 
 // Scenario CA1-H-02: is_system=true → 201 with is_system=true in response
 func TestCreateDepartment_SystemDept_IsSystemTrue(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_h02_sys", "name": "System Dept H02", "is_system": true})
@@ -74,6 +79,7 @@ func TestCreateDepartment_SystemDept_IsSystemTrue(t *testing.T) {
 
 // Scenario CA1-H-03: is_system omitted → defaults to false
 func TestCreateDepartment_IsSystemOmitted_DefaultsFalse(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_h03", "name": "No IsSystem H03"})
@@ -83,6 +89,7 @@ func TestCreateDepartment_IsSystemOmitted_DefaultsFalse(t *testing.T) {
 
 // Scenario CA1-V-01: code field missing entirely → 400
 func TestCreateDepartment_MissingCode_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"name": "No Code"})
@@ -91,6 +98,7 @@ func TestCreateDepartment_MissingCode_Returns400(t *testing.T) {
 
 // Scenario CA1-V-02: code="" (empty string) → 400
 func TestCreateDepartment_EmptyCode_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "", "name": "Empty Code"})
@@ -99,6 +107,7 @@ func TestCreateDepartment_EmptyCode_Returns400(t *testing.T) {
 
 // Scenario CA1-V-04: name="" (empty string) → 400
 func TestCreateDepartment_EmptyName_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_v04", "name": ""})
@@ -107,6 +116,7 @@ func TestCreateDepartment_EmptyName_Returns400(t *testing.T) {
 
 // Scenario CA1-V-05: code="   " (whitespace only) → 400
 func TestCreateDepartment_WhitespaceOnlyCode_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "   ", "name": "Whitespace Code"})
@@ -115,6 +125,7 @@ func TestCreateDepartment_WhitespaceOnlyCode_Returns400(t *testing.T) {
 
 // Scenario CA1-V-06: extra unknown fields in body → ignored, 201
 func TestCreateDepartment_ExtraUnknownFields_Ignored(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_v06", "name": "Extra Fields", "unknown": "ignored", "another": 99})
@@ -123,6 +134,7 @@ func TestCreateDepartment_ExtraUnknownFields_Ignored(t *testing.T) {
 
 // Scenario CA1-CON-02: same code, different name → 409 conflict
 func TestCreateDepartment_SameCodeDifferentName_Returns409(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status1, _ := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_con02", "name": "First"})
@@ -135,6 +147,7 @@ func TestCreateDepartment_SameCodeDifferentName_Returns409(t *testing.T) {
 
 // Scenario CA1-CON-03 / CROSS-CA-03: retired dept code is still unique — cannot reuse
 func TestCreateDepartment_RetiredCode_StillBlocked(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_con03", "name": "To Retire", "is_system": false})
@@ -151,6 +164,7 @@ func TestCreateDepartment_RetiredCode_StillBlocked(t *testing.T) {
 
 // Scenario CA1-M-01: malformed JSON body → 400
 func TestCreateDepartment_MalformedJSON_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodPost, env.baseURL+"/api/v1/operator/departments",
 		bytes.NewBufferString(`{"code": bad json`))
@@ -166,6 +180,7 @@ func TestCreateDepartment_MalformedJSON_Returns400(t *testing.T) {
 
 // Scenario CA1-M-02: empty body {} → 400
 func TestCreateDepartment_EmptyBody_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{})
@@ -174,6 +189,7 @@ func TestCreateDepartment_EmptyBody_Returns400(t *testing.T) {
 
 // Scenario CA1-CT-01: Content-Type: text/plain → 415
 func TestCreateDepartment_WrongContentType_Returns415(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodPost, env.baseURL+"/api/v1/operator/departments",
 		bytes.NewBufferString(`{"code":"crt_ct01","name":"CT Test"}`))
@@ -189,6 +205,7 @@ func TestCreateDepartment_WrongContentType_Returns415(t *testing.T) {
 
 // Scenario CA1-NOEVT-01: catalog-admin has no outbox — outbox_events table must not exist
 func TestCreateDepartment_NoOutboxEventsEmitted(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_noevt01", "name": "No Events"})
@@ -204,6 +221,7 @@ func TestCreateDepartment_NoOutboxEventsEmitted(t *testing.T) {
 
 // Scenario CA1-CON-04: concurrent POSTs with same code → exactly one 201, one 409
 func TestCreateDepartment_ConcurrentSameCode_ExactlyOneWins(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	results := make([]int, 2)
 	var wg sync.WaitGroup
@@ -233,6 +251,7 @@ func TestCreateDepartment_ConcurrentSameCode_ExactlyOneWins(t *testing.T) {
 
 // Scenario CA1-FMT-04/05: POST response always has record_version=1 and is_active=true
 func TestCreateDepartment_Response_RecordVersionOneAndIsActiveTrue(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_fmt04", "name": "Record Version"})
@@ -244,6 +263,7 @@ func TestCreateDepartment_Response_RecordVersionOneAndIsActiveTrue(t *testing.T)
 
 // Scenario CA1-FMT-08: round-trip data integrity — sent values match returned values
 func TestCreateDepartment_RoundTrip_DataMatchesRequest(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "crt_fmt08_code", "name": "FMT08 Round Trip"})
@@ -255,6 +275,7 @@ func TestCreateDepartment_RoundTrip_DataMatchesRequest(t *testing.T) {
 
 // Scenario CA1-FMT-09: special characters in name stored and returned correctly
 func TestCreateDepartment_SpecialCharsInName_StoredCorrectly(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	name := "Finance & Accounting (O'Brien)"
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,

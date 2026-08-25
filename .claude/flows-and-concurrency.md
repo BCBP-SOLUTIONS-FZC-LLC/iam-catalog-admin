@@ -134,7 +134,7 @@ never rolls back or fails the write (CAT-FAIL-1) — the 60 s TTL self-heals reg
 |---|---|---|---|
 | This service's DB down | `/readyz` fails | Marks itself not-ready; writes rejected `503` | Core/Group Mapping serve from cache (TTL, then stale-if-error); no impact to Core's I-8 hot path |
 | This service fully down (pod-level) | Envoy circuit-breaker / connection refused | n/a | Same as above — cache/stale-if-error absorbs it; a CAT-1/2/5 write fails `503` until recovery, blocking only operator actions |
-| CAT-I1/CAT-I2 call times out | Caller-side timeout (50 ms budget) | No effect | Caller falls through to its `:stale` key; if that's *also* empty (e.g. a brand-new Core replica on first boot), the caller's admin/JIT write path returns `503 catalog_service_unavailable` — never a silently wrong answer |
+| CAT-I1/CAT-I2 call times out | Caller-side timeout (50 ms budget) | No effect | Caller falls through to its `:stale` key; if that's *also* empty (e.g. a brand-new Core replica on first boot), the caller's admin/JIT write path returns `503 catalog_unavailable` — never a silently wrong answer |
 | Optimistic-lock conflict on CAT-2/CAT-5 | `record_version` mismatch | `409 optimistic_lock_conflict` | Caller re-fetches and retries |
 | A CAT-1/2/5 write succeeds but the cache `DEL` fails | Logged error, post-commit | Self-heals within 60 s TTL | None |
 

@@ -18,6 +18,7 @@ import (
 
 // Scenario CROSS-CA-08: stale version after another PATCH → 409
 func TestCrossFlow_StaleVersionAfterConcurrentUpdate_Returns409(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "cf08_stale", "name": "Stale Cross"})
@@ -38,6 +39,7 @@ func TestCrossFlow_StaleVersionAfterConcurrentUpdate_Returns409(t *testing.T) {
 
 // Scenario CA-FMT-01: error response always has {error, code, message, status} fields
 func TestResponseFormat_ErrorEnvelope_HasAllRequiredFields(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet,
 		"/api/v1/departments/00000000-0000-0000-0000-000000000001", publicHeaders, nil)
@@ -52,6 +54,7 @@ func TestResponseFormat_ErrorEnvelope_HasAllRequiredFields(t *testing.T) {
 
 // Scenario CA-FMT-02: 200 success response has Content-Type: application/json
 func TestResponseFormat_Success_ContentTypeIsJSON(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodGet, env.baseURL+"/api/v1/departments", nil)
 	require.NoError(t, err)
@@ -64,6 +67,7 @@ func TestResponseFormat_Success_ContentTypeIsJSON(t *testing.T) {
 
 // Scenario CA-FMT-03: 4xx error response has Content-Type: application/json
 func TestResponseFormat_Error_ContentTypeIsJSON(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodGet, env.baseURL+"/api/v1/departments/not-a-uuid", nil)
 	require.NoError(t, err)
@@ -76,6 +80,7 @@ func TestResponseFormat_Error_ContentTypeIsJSON(t *testing.T) {
 
 // Scenario CA-FMT-07: 409 OCC error response surfaces record_version information
 func TestResponseFormat_OCC409_SurfacesVersionInfo(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "fmt07_occ", "name": "OCC Format"})
@@ -95,6 +100,7 @@ func TestResponseFormat_OCC409_SurfacesVersionInfo(t *testing.T) {
 
 // Scenario CA-NOEVT-01: outbox_events table does not exist in this service's schema
 func TestNoEvents_OutboxTable_DoesNotExist(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	var exists bool
 	err := env.rawPool.QueryRow(context.Background(),
@@ -106,6 +112,7 @@ func TestNoEvents_OutboxTable_DoesNotExist(t *testing.T) {
 
 // Scenario CA-NOEVT-02: no outbox rows after department patch
 func TestNoEvents_PatchDepartment_NoOutboxRows(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "noevt02", "name": "No Events Dept"})
@@ -123,6 +130,7 @@ func TestNoEvents_PatchDepartment_NoOutboxRows(t *testing.T) {
 
 // Scenario CA-NOEVT-03: no outbox rows after plan patch
 func TestNoEvents_PatchPlan_NoOutboxRows(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"display_name": "No Events Plan", "record_version": 1}) //nolint:errcheck
@@ -137,6 +145,7 @@ func TestNoEvents_PatchPlan_NoOutboxRows(t *testing.T) {
 
 // Scenario CA-NOEVT-05: no app.tenant_id GUC set — pure leaf, no RLS
 func TestNoEvents_NoRLSGUCSet(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodGet, "/api/v1/departments", publicHeaders, nil) //nolint:errcheck
 
@@ -153,6 +162,7 @@ func TestNoEvents_NoRLSGUCSet(t *testing.T) {
 
 // Scenario CA-DI-05 / CAI2-H-02: CAT-I2 record_versions map matches CAT-4b per-code versions
 func TestDataIntegrity_InternalPlansVersions_MatchOperatorPlanVersions(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, internalRaw := doJSON(t, env, http.MethodGet, "/api/v1/internal/plans", systemHeaders, nil)
 	var internalBody struct {
@@ -170,6 +180,7 @@ func TestDataIntegrity_InternalPlansVersions_MatchOperatorPlanVersions(t *testin
 
 // Scenario CA-DI-06: Unicode code stored and retrieved correctly
 func TestDataIntegrity_UnicodeCode_StoredCorrectly(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "dept-unicode-01", "name": "قسم عربي"})

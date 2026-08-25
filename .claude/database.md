@@ -66,7 +66,7 @@ CREATE INDEX idx_departments_active ON public.departments (is_active) WHERE is_a
 ```
 
 Seeded with 5 system departments (`ENGINEERING`, `DESIGN`, `PROCUREMENT`, `FINANCE`, `LEGAL`,
-all `is_system=true`) via `ON CONFLICT (code) DO NOTHING` in migration 000001 — byte-identical
+all `is_system=true`) via `ON CONFLICT (code) DO NOTHING` in `000001_init_schema` — byte-identical
 shape to the source O&M LLD's own departments table.
 
 **Lifecycle invariants (D-1..D-11, ported unchanged from the source LLD, enforced by triggers —
@@ -77,7 +77,8 @@ see below):**
   (`department_handler.go`'s `Patch` rejects the field in the request body with `422
   field_immutable` before it ever reaches the DB), not by a DB trigger.
 - A system department (`is_system=true`) can never be retired (`is_active=false`) — `chk_system_department_active` CHECK constraint (D-7/D-9).
-- A system department's `name` is immutable — enforced by trigger, not CHECK (D-11) — see migration 000004 below.
+- A system department's `name` is immutable — enforced by trigger, not CHECK (D-11) — see the
+  triggers section below.
 - Hard delete is unconditionally blocked regardless of `is_system` (D-4/OP-3) — a `BEFORE DELETE`
   trigger `RAISE EXCEPTION`s on every attempt.
 
@@ -108,7 +109,7 @@ CREATE TABLE public.plans (
 );
 ```
 
-Seeded with the three fixed tiers in migration 000001:
+Seeded with the three fixed tiers in `000001_init_schema`:
 
 | `code` | `workflow_template_limit` | `tender_limit` | `trial_duration_days` | `sso_enabled` | `custom_branding` | `feature_set` |
 |---|---|---|---|---|---|---|
@@ -122,7 +123,7 @@ representation is a nullable column, not a `-1` sentinel, per the source LLD's o
 (`FeatureSet ⊕ tenants.feature_flags` override delta) is computed exclusively in Core at I-8 read
 time (PLAN-6) — this service never reads or writes that delta.
 
-## Triggers (migration 000002, ported verbatim from the O&M LLD)
+## Triggers (in `000001_init_schema`, ported verbatim from the O&M LLD)
 
 - **`touch_row()`** — `BEFORE UPDATE` on both tables, guarded by
   `WHEN (OLD.* IS DISTINCT FROM NEW.*)` (no spurious version bump on a no-op `UPDATE`). Bumps
@@ -134,29 +135,31 @@ time (PLAN-6) — this service never reads or writes that delta.
 - **`prevent_department_code_change()`** — `BEFORE UPDATE OF code`. Raises if
   `OLD.code <> NEW.code` (D-10).
 - **`prevent_system_department_name_change()`** — `BEFORE UPDATE OF name`. Raises if
-  `OLD.is_system AND OLD.name <> NEW.name` (D-11). As of migration 000004 (below), this raises with
-  a structured SQLSTATE + constraint name, not just a message string.
+  `OLD.is_system AND OLD.name <> NEW.name` (D-11), with a structured SQLSTATE + constraint name
+  (`ERRCODE = 'check_violation'`, `CONSTRAINT = 'chk_system_department_name_immutable'`), not just
+  a message string, so the Go side can match it via `pgcommon.IsCheckViolation`/`ConstraintName`
+  exactly like the real `chk_system_department_active` CHECK constraint. Can't be a real CHECK
+  constraint: the rule compares `OLD.name` to `NEW.name`, which CHECK has no way to express (CHECK
+  only sees the new row).
 
-## Migrations (000001–000004)
+## Migrations
 
-| # | Name | Purpose |
-|---|------|---------|
-| 001 | `init_schema` | Creates `tenant_plan`/`branding_level` ENUMs, `departments`, `plans`; seeds 5 system departments and 3 plan tiers. |
-| 002 | `triggers` | `touch_row()`, `prevent_department_delete()`, `prevent_department_code_change()`, `prevent_system_department_name_change()` — all four lifecycle triggers above. |
-| 003 | `roles_grants` | Creates `catalog_admin_app` role (`LOGIN NOBYPASSRLS` — idempotent `CREATE ... IF NOT EXISTS` / `ALTER ROLE`). Grants `SELECT, INSERT, UPDATE` on `departments`, `SELECT, UPDATE` on `plans`, `USAGE` on schema `public`. **No `DELETE` grant on either table** — defense-in-depth on top of the trigger block. |
-| 004 | `department_name_immutable_errcode` | Gives `prevent_system_department_name_change`'s `RAISE EXCEPTION` a structured `ERRCODE = 'check_violation'` (SQLSTATE `23514`) and a synthetic `CONSTRAINT = 'chk_system_department_name_immutable'` name, so the Go side can match it via `pgcommon.IsCheckViolation`/`ConstraintName` exactly like the real `chk_system_department_active` CHECK constraint — replacing a fragile raw-message substring search. Can't be a real CHECK constraint: the rule compares `OLD.name` to `NEW.name`, which CHECK has no way to express (CHECK only sees the new row). |
+A single consolidated migration, `000001_init_schema`: `tenant_plan`/`branding_level` ENUMs,
+`departments`/`plans` tables + seed data, all four lifecycle triggers above, and the
+`catalog_admin_app` role/grants. Kept as one file while this service remains pre-production — no
+environment has applied an earlier multi-file history that needs preserving, so there's no
+forward-only-migration constraint yet forcing a split.
 
-Migrations are forward-only and additive (MIG-1 convention) — applied via `platform-pgcommon`'s
-`pkg/migrate.Runner` against an embedded `//go:embed migrations/*.sql` filesystem
-(`internal/adapter/outbound/postgres/migrate.go`). No down-migration is ever run in production;
-`.down.sql` files exist for local dev rollback only.
+Applied via `platform-pgcommon`'s `pkg/migrate.Runner` against an embedded
+`//go:embed migrations/*.sql` filesystem (`internal/adapter/outbound/postgres/migrate.go`). No
+down-migration is ever run in production; the `.down.sql` file exists for local dev rollback only.
 
 ## Roles (LLD §9)
 
 **Single runtime role — no migrator/app split**, unlike every RLS-scoped sibling service:
-`catalog_admin_app` is used for both migrations and app traffic. The migration 000003 comment
-states the reasoning directly: "no migrator/admin_readonly split is needed — no cross-tenant data
-exists to read around."
+`catalog_admin_app` is used for both migrations and app traffic. `000001_init_schema`'s own
+comment states the reasoning directly: "no migrator/admin_readonly split is needed — no
+cross-tenant data exists to read around."
 
 - `catalog_admin_app` — `LOGIN NOBYPASSRLS`. `SELECT`/`INSERT`/`UPDATE` on `departments`;
   `SELECT`/`UPDATE` on `plans`. No `DELETE` grant on either table (defense-in-depth on top of the

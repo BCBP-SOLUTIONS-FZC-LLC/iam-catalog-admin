@@ -94,5 +94,5 @@ from a pre-drop snapshot and replaying any writes this service took since cutove
 |---|---|
 | Path | O&M/Group-Mapping → this service, mesh-internal, `GET /api/v1/internal/departments` or `/plans` |
 | Timeout | 50ms client-side budget (LLD §7 states ≤30ms p99 server-side; the client budget leaves headroom for network) |
-| Retry policy | **None specified by the LLD** — a single attempt; on failure, fall through to the `:stale` cache key (§5), then to `503 catalog_service_unavailable` if that's also empty (e.g. a brand-new replica's first boot) |
+| Retry policy | **None specified by the LLD** — a single attempt; on failure, fall through to the `:stale` cache key (§5), then to `503 catalog_unavailable` if that's also empty (e.g. a brand-new replica's first boot) |
 | Fallback behavior | Serve `om:departments:stale`/`om:plans:stale` (24h TTL) with a logged warning; never a silent wrong answer (LLD §11, CAT-FAIL-2) |

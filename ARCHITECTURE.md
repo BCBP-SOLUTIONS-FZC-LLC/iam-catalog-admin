@@ -36,8 +36,8 @@ graph TD
 ```
 
 **Rule:** `domain` ← `port` ← `service` ← `adapter` ← `cmd`. Nothing in `internal/core/` imports
-`internal/adapter/`. No `go-arch-lint.yml` is checked in yet (worth adding once the service grows
-past two aggregates) — for now the rule is enforced by review, not CI.
+`internal/adapter/`. Enforced in CI via `go-arch-lint` (`.go-arch-lint.yml`,
+`.github/scripts/arch-lint.sh`), not just review.
 
 ## Composition root — `cmd/catalog-admin-config/main.go`
 
@@ -54,9 +54,9 @@ Startup order:
    `pgadapter.NewDepartmentRepository(pool)` → `service.NewDepartmentService(repo, cache)` →
    `httpadapter.NewDepartmentHandler(svc)`.
 7. **Router** — see "Request lifecycle" below for the exact middleware order and route table.
-8. **Graceful shutdown** — `srv.Shutdown` (30s) → cancel background context → shutdown tracing →
-   flush logger. No outbox/SQS-consumer drain step, because there is neither (see "Event
-   architecture" below).
+8. **Graceful shutdown** — `srv.Shutdown` (30s) → metrics-server `Shutdown` → cancel background
+   context → `shutdownTracing` → `gincommon.Shutdown`. No outbox/SQS-consumer drain step, because
+   there is neither (see "Event architecture" below).
 
 ## Shared platform libraries
 
@@ -167,12 +167,15 @@ sequenceDiagram
     H-->>Op: 200 + body, or mapped error status
 ```
 
-Route table, exactly as registered in `main.go` (no route lives anywhere else):
+Route table, exactly as registered in `router.go`'s `NewRouter` (the single source of truth both
+`main.go` and `test/e2e`'s harness call into):
 
 ```
-GET    /healthz                          (unconditional 200)
+GET    /healthz                          (unconditional 200, gincommon.HealthHandler())
 GET    /readyz                           (checks Postgres + Valkey health)
-GET    /metrics                          (Prometheus)
+GET    /swagger/*any                     (Swagger UI; active outside `production`, opt-in +
+                                           bearer-token-gated via DOCS_ENABLED/DOCS_AUTH_TOKEN
+                                           in `production`)
 /api/v1  [ProtectedMiddlewares, IdentityBridgeMiddleware, RequireJSONContentType]
   GET    /departments                    CAT-6, any authenticated caller
   GET    /departments/:id                CAT-7, any authenticated caller
@@ -187,6 +190,10 @@ GET    /metrics                          (Prometheus)
     GET    /departments                  CAT-I1, mesh-only
     GET    /plans                        CAT-I2, mesh-only
 ```
+
+`/metrics` is **not** on this router — it's served by a second, independent `http.Server` on its
+own `METRICS_PORT` (default `9090`), wired directly in `main.go`, so a NetworkPolicy scrape grant
+doesn't also open the API port.
 
 ## Cache design
 
@@ -248,10 +255,11 @@ custom_branding (none|logo), feature_set (jsonb), record_version, created_at, up
 -- trigger: touch_row
 ```
 
-Full DDL: `internal/adapter/outbound/postgres/migrations/000001_init_schema.up.sql` (tables + seed
-data), `000002_triggers.up.sql` (lifecycle enforcement), `000003_roles_grants.up.sql` (the single
+Full DDL: `internal/adapter/outbound/postgres/migrations/000001_init_schema.up.sql` — one
+consolidated migration (tables + seed data, lifecycle-enforcement triggers, and the single
 `catalog_admin_app` DB role — `SELECT`/`INSERT`/`UPDATE`, no `DELETE`, no `BYPASSRLS` grant since
-there is nothing to bypass).
+there is nothing to bypass). Kept as a single file while this service remains pre-production and
+no environment has applied an earlier multi-file history that needs preserving.
 
 ## Event architecture
 

@@ -126,8 +126,8 @@ func (s *DepartmentService) Patch(ctx context.Context, id uuid.UUID, name *strin
 	// raw error message — chk_system_department_active is a real CHECK
 	// constraint; chk_system_department_name_immutable is a synthetic
 	// constraint name a trigger's RAISE EXCEPTION attaches for exactly this
-	// matching purpose (migration 000004 — it can't be a real CHECK since
-	// it compares OLD vs NEW column values, which CHECK can't express).
+	// matching purpose (it can't be a real CHECK since it compares OLD vs
+	// NEW column values, which CHECK can't express).
 	d, err := s.repo.Update(ctx, id, name, isActive, expectedVersion)
 	if err != nil {
 		if pgcommon.IsCheckViolation(err) {

@@ -58,10 +58,10 @@ highlights most relevant to day-to-day work:
     read around, so the usual migrator/app isolation buys nothing here.
 
 11. **CHECK-violation matching via `pgcommon.IsCheckViolation`/`ConstraintName`, never a message
-    substring search.** Migration 000004 exists specifically to give a trigger-raised exception
-    (which can't be a real CHECK constraint, since it compares `OLD` vs `NEW`) a structured
-    SQLSTATE + synthetic constraint name so the Go side can match it the same way it matches a
-    real CHECK constraint.
+    substring search.** `prevent_system_department_name_change`'s trigger (which can't be a real
+    CHECK constraint, since it compares `OLD` vs `NEW`) raises with a structured SQLSTATE +
+    synthetic constraint name so the Go side can match it the same way it matches a real CHECK
+    constraint.
 
 # Extending the Service
 
@@ -86,7 +86,8 @@ highlights most relevant to day-to-day work:
   `chk_system_department_name_immutable`): write it as a `BEFORE UPDATE OF <col>` trigger that
   `RAISE EXCEPTION USING ERRCODE = 'check_violation', CONSTRAINT = '<synthetic_name>', ...` — never
   a bare `RAISE EXCEPTION 'message'` — so `pgcommon.IsCheckViolation`/`ConstraintName` can match it
-  structurally on the Go side (see migration 000004's own comment for the full reasoning).
+  structurally on the Go side (see `prevent_system_department_name_change`'s own comment in
+  `000001_init_schema.up.sql` for the full reasoning).
 - **New cache key:** Add the constant to `internal/adapter/outbound/valkey/cache.go` (mirror
   `DepartmentsKey`/`PlansKey`), read-through in the relevant service method, invalidate
   post-commit in the write path, and add a row to `CACHE_DESIGN.md`'s table and
@@ -166,6 +167,14 @@ breakdown; `.coverage/{unit,postgres,e2e}.out` are merged via `scripts/merge_cov
 trigger-raised CHECK violation) won't show as covered from `test/unit` alone — run the full
 `make test-ci` before concluding a branch is truly uncovered.
 
+**A new `test/postgres`/`test/e2e` test runs slower than its siblings, or `make test-ci` regresses
+back toward its pre-parallelization time:** Check the new test calls `t.Parallel()` as its first
+statement (after `t.Helper()` if it has one) — every existing test in both packages does, and each
+already builds its own isolated Postgres container/pool (e2e also its own `miniredis` +
+`httptest.Server`), so there's no shared state that would make parallel execution unsafe. A test
+missing `t.Parallel()` still passes, it just runs serially against the others — a silent wall-time
+regression, not a test failure, so it won't surface as a CI red X.
+
 ---
 
 # Appendix — Error Codes
@@ -194,7 +203,7 @@ after a sub-code override (CAT-D9). Status mapping lives in `domainErrorStatus`
 | `duplicate_code` | 409 | — | CAT-1's `code` already exists (unique violation on `uq_departments_code`, D-10). Sub-code over `conflict`. |
 | `db_unavailable` | 503 | — | A raw Postgres error whose SQLSTATE class (`08`/`53`/`57`/`58`) indicates connectivity/resource exhaustion, not a logic error. |
 | `dependency_unavailable` | 503 | — | A DB error that isn't a recognized SQL-protocol error, `DomainError`, `pgx.ErrNoRows`, or a context cancellation — catch-all for "something else broke the DB connection." |
-| `catalog_service_unavailable` | 503 | — | Emitted by a **consumer** (Core, Group Mapping), never by this service — the downstream consequence of this service being unavailable while a consumer's cache is also empty/stale-if-error-expired (§11.1). |
+| `catalog_unavailable` | 503 | — | Emitted by a **consumer** (Core, Group Mapping), never by this service — the downstream consequence of this service being unavailable while a consumer's cache is also empty/stale-if-error-expired (§11.1). |
 | `method_not_allowed` | 405 | — | `DELETE /operator/departments/:id` (CAT-3), or any route hit with a disallowed HTTP verb generically (the router's `NoMethod` handler). |
 
 `cache_unavailable` is declared in `internal/core/domain/errors.go` and status-mapped, but **no
@@ -204,6 +213,6 @@ design (CAT-FAIL-1).
 
 ---
 
-**LLD version:** v1.23 (`docs/lld/iam-lld-catalog-admin-config-service.md`) — check its revision
+**LLD version:** v1.26 (`docs/lld/iam-lld-catalog-admin-config-service.md`) — check its revision
 history table before assuming any section number or claim above is still current; this service's
 own history shows the LLD gets corrected via dedicated audit passes fairly often.

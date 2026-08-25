@@ -21,6 +21,7 @@ import (
 
 // Scenario CA2-A-01: no identity headers → 401
 func TestPatchDepartment_NoIdentityHeaders_Returns401(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_a01", "name": "No Auth"})
@@ -33,6 +34,7 @@ func TestPatchDepartment_NoIdentityHeaders_Returns401(t *testing.T) {
 
 // Scenario CA2-A-02: identity present, no roles → 403
 func TestPatchDepartment_NoRoles_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_a02", "name": "No Roles"})
@@ -47,6 +49,7 @@ func TestPatchDepartment_NoRoles_Returns403(t *testing.T) {
 
 // Scenario CA2-A-03: tenant_admin role not sufficient → 403
 func TestPatchDepartment_TenantAdminRole_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_a03", "name": "Admin Forbidden"})
@@ -60,6 +63,7 @@ func TestPatchDepartment_TenantAdminRole_Returns403(t *testing.T) {
 
 // Scenario CA2-A-04: platform_operator → 200 authorized
 func TestPatchDepartment_OperatorRole_Authorized(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_a04", "name": "Authorized"})
@@ -72,6 +76,7 @@ func TestPatchDepartment_OperatorRole_Authorized(t *testing.T) {
 
 // Scenario CA2-H-02: retire non-system department (is_active=false) → 200
 func TestPatchDepartment_RetireNonSystem_Returns200(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_h02", "name": "Retire H02", "is_system": false})
@@ -85,6 +90,7 @@ func TestPatchDepartment_RetireNonSystem_Returns200(t *testing.T) {
 
 // Scenario CA2-H-03: re-activate a retired department → 200
 func TestPatchDepartment_ReactivateRetiredDept_Returns200(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_h03", "name": "Reactivate H03", "is_system": false})
@@ -101,6 +107,7 @@ func TestPatchDepartment_ReactivateRetiredDept_Returns200(t *testing.T) {
 
 // Scenario CA2-H-04: update name and is_active in one request → both fields changed
 func TestPatchDepartment_UpdateNameAndIsActive_BothChanged(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_h04", "name": "Old Name H04", "is_system": false})
@@ -116,6 +123,7 @@ func TestPatchDepartment_UpdateNameAndIsActive_BothChanged(t *testing.T) {
 
 // Scenario CA2-H-05: retire already-retired dept → 200 (idempotent)
 func TestPatchDepartment_RetireAlreadyRetired_Idempotent(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_h05", "name": "Retire Idempotent H05", "is_system": false})
@@ -132,6 +140,7 @@ func TestPatchDepartment_RetireAlreadyRetired_Idempotent(t *testing.T) {
 
 // Scenario CA2-H-06: reactivate already-active dept → 200 (idempotent)
 func TestPatchDepartment_ReactivateAlreadyActive_Idempotent(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_h06", "name": "Active Idempotent H06", "is_system": false})
@@ -145,6 +154,7 @@ func TestPatchDepartment_ReactivateAlreadyActive_Idempotent(t *testing.T) {
 
 // Scenario CA2-V-01: non-UUID :id path param → 400
 func TestPatchDepartment_NonUUIDPathParam_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/departments/not-a-uuid", operatorHeaders,
 		map[string]any{"name": "X", "record_version": 1})
@@ -153,6 +163,7 @@ func TestPatchDepartment_NonUUIDPathParam_Returns400(t *testing.T) {
 
 // Scenario CA2-V-02: body has only record_version, no mutable fields → 400 no_mutable_field
 func TestPatchDepartment_NoMutableFields_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_v02", "name": "No Mutable"})
@@ -166,6 +177,7 @@ func TestPatchDepartment_NoMutableFields_Returns400(t *testing.T) {
 
 // Scenario CA2-V-03: name=null explicitly → 400 no_mutable_field (JSON null → nil pointer)
 func TestPatchDepartment_NameNullExplicit_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_v03", "name": "Name Null"})
@@ -186,6 +198,7 @@ func TestPatchDepartment_NameNullExplicit_Returns400(t *testing.T) {
 
 // Scenario CA2-V-04: is_active=null explicitly → 400
 func TestPatchDepartment_IsActiveNullExplicit_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_v04", "name": "IsActive Null"})
@@ -205,6 +218,7 @@ func TestPatchDepartment_IsActiveNullExplicit_Returns400(t *testing.T) {
 
 // Scenario CA2-V-05: name="" (empty string) → 400
 func TestPatchDepartment_EmptyName_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_v05", "name": "Empty Name"})
@@ -217,6 +231,7 @@ func TestPatchDepartment_EmptyName_Returns400(t *testing.T) {
 
 // Scenario CA2-V-06: record_version as JSON string "1" (type mismatch) → 400
 func TestPatchDepartment_RecordVersionAsString_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_v06", "name": "Version String"})
@@ -236,6 +251,7 @@ func TestPatchDepartment_RecordVersionAsString_Returns400(t *testing.T) {
 
 // Scenario CA2-V-08: name is whitespace-only (e.g. "   ") → 400 validation_error
 func TestPatchDepartment_WhitespaceOnlyName_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_v08_ws", "name": "Whitespace Name"})
@@ -249,6 +265,7 @@ func TestPatchDepartment_WhitespaceOnlyName_Returns400(t *testing.T) {
 
 // Scenario CA2-V-07: both code and is_system in body → 422 field_immutable (code checked first)
 func TestPatchDepartment_BothImmutableFields_Returns422(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_v07", "name": "Both Immutable", "is_system": false})
@@ -262,6 +279,7 @@ func TestPatchDepartment_BothImmutableFields_Returns422(t *testing.T) {
 
 // Scenario CA2-NF-02: well-formed UUID that does not exist → 404
 func TestPatchDepartment_NonExistentUUID_Returns404(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch,
 		"/api/v1/operator/departments/00000000-0000-0000-0000-000000000001", operatorHeaders,
@@ -271,6 +289,7 @@ func TestPatchDepartment_NonExistentUUID_Returns404(t *testing.T) {
 
 // Scenario CA2-BL-05: cache invalidated after patch; next GET reflects updated name
 func TestPatchDepartment_CacheInvalidated_NextGetReflectsUpdate(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_bl05", "name": "Cache Before"})
@@ -287,6 +306,7 @@ func TestPatchDepartment_CacheInvalidated_NextGetReflectsUpdate(t *testing.T) {
 
 // Scenario CA2-BL-06 / CA-DI-02 / CROSS-CA-02: retired dept excluded from active_only=true list
 func TestPatchDepartment_RetiredDept_ExcludedFromActiveFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_bl06", "name": "Retire Filter", "is_system": false})
@@ -307,6 +327,7 @@ func TestPatchDepartment_RetiredDept_ExcludedFromActiveFilter(t *testing.T) {
 
 // Scenario CA2-OL-02: record_version=0 when actual is ≥1 → 409 optimistic_lock_conflict
 func TestPatchDepartment_VersionZero_Returns409(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_ol02", "name": "Version Zero"})
@@ -320,6 +341,7 @@ func TestPatchDepartment_VersionZero_Returns409(t *testing.T) {
 
 // Scenario CA2-OL-03 / CA2-FMT-06: correct record_version → 200 with version incremented
 func TestPatchDepartment_CorrectVersion_Returns200_VersionIncremented(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_ol03", "name": "Correct Version"})
@@ -333,6 +355,7 @@ func TestPatchDepartment_CorrectVersion_Returns200_VersionIncremented(t *testing
 
 // Scenario CA2-M-01: malformed JSON → 400
 func TestPatchDepartment_MalformedJSON_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_m01", "name": "Malformed"})
@@ -352,6 +375,7 @@ func TestPatchDepartment_MalformedJSON_Returns400(t *testing.T) {
 
 // Scenario CA2-M-02: empty body {} → 400 no_mutable_field
 func TestPatchDepartment_EmptyBody_Returns400NoMutableField(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_m02", "name": "Empty Body"})
@@ -365,6 +389,7 @@ func TestPatchDepartment_EmptyBody_Returns400NoMutableField(t *testing.T) {
 
 // Scenario CA2-CT-01: Content-Type: text/plain → 415
 func TestPatchDepartment_WrongContentType_Returns415(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_ct01", "name": "CT Test"})
@@ -384,6 +409,7 @@ func TestPatchDepartment_WrongContentType_Returns415(t *testing.T) {
 
 // Scenario CA2-NOEVT-01: no outbox_events table after patch
 func TestPatchDepartment_NoOutboxEventsEmitted(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_noevt01", "name": "No Events"})
@@ -401,6 +427,7 @@ func TestPatchDepartment_NoOutboxEventsEmitted(t *testing.T) {
 
 // Scenario CA2-CON-01: concurrent PATCHes with same version → one 200, one 409
 func TestPatchDepartment_ConcurrentSameVersion_ExactlyOneWins(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_con01", "name": "Concurrent"})
@@ -434,6 +461,7 @@ func TestPatchDepartment_ConcurrentSameVersion_ExactlyOneWins(t *testing.T) {
 
 // Scenario CA2-FMT-07: 409 OCC response includes record_version info
 func TestPatchDepartment_OCCResponse_IncludesVersionInfo(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_fmt07", "name": "OCC Format"})
@@ -452,6 +480,7 @@ func TestPatchDepartment_OCCResponse_IncludesVersionInfo(t *testing.T) {
 
 // Scenario CA-BL-01: record_version missing from body → decoded as 0 → 409 (NOT 400)
 func TestPatchDepartment_MissingRecordVersion_Returns409NotBadRequest(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_bl01x", "name": "Missing Version"})
@@ -465,6 +494,7 @@ func TestPatchDepartment_MissingRecordVersion_Returns409NotBadRequest(t *testing
 
 // Scenario CA-DI-01: retired dept is still readable by ID via CAT-7
 func TestPatchDepartment_RetiredDept_StillReadableByID(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_di01", "name": "Retire Readable", "is_system": false})
@@ -484,6 +514,7 @@ func TestPatchDepartment_RetiredDept_StillReadableByID(t *testing.T) {
 // The DB trigger fires WHEN (OLD.* IS DISTINCT FROM NEW.*), so the name
 // must differ from the current value to trigger the version bump.
 func TestPatchDepartment_DataChange_RecordVersionIncrements(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "ptch_di03", "name": "Original Name"})

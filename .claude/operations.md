@@ -221,6 +221,9 @@ step anywhere** — this service publishes no events (LLD §10).
    deployed image digest matches what was signed, waits for rollout, then a 2-minute Prometheus
    5xx-rate check — auto-`helm rollback` on failure) → `publish` (GitHub Release; only runs if
    `deploy-gate` succeeded — a skipped gate means the release was never actually deployed).
+5. **`changelog-check.yml`** (PR-only, paths `internal/**`/`deploy/**`/`cmd/**`) — fails the PR
+   outright if it doesn't also modify `CHANGELOG.md`, catching a missing entry earlier than
+   `release.yml`'s own tag-time check above.
 
 **Architecture lint** (`go-arch-lint`, `.go-arch-lint.yml`) is a **blocking** CI gate, not just a
 local dev tool — a cross-layer import (e.g. `core/service` importing an `adapter/` package

@@ -200,8 +200,8 @@ func TestDepartmentService_Patch_EmptyNameRejected(t *testing.T) {
 }
 
 // TestDepartmentService_Patch_NameImmutableCheckViolation simulates the
-// real shape migration 000004 produces: a *pgconn.PgError with SQLSTATE
-// 23514 (check_violation) and ConstraintName
+// real shape the prevent_system_department_name_change trigger produces:
+// a *pgconn.PgError with SQLSTATE 23514 (check_violation) and ConstraintName
 // "chk_system_department_name_immutable" — matched via
 // pgcommon.IsCheckViolation/ConstraintName, not a substring search over
 // the error message.

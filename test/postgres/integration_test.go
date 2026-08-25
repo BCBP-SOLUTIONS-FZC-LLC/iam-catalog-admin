@@ -2,9 +2,9 @@
 
 // Package postgres_test is the Postgres-backed integration suite —
 // black-box, mirrors iam-org-membership's test/postgres/ convention.
-// Spins up a real Postgres container, runs this service's own migrations
-// (exercising 000001_init_schema, 000002_triggers, 000003_roles_grants
-// end to end — this doubles as the migration test), and exercises the
+// Spins up a real Postgres container, runs this service's own migration
+// (000001_init_schema — schema, triggers, and role/grants in one file —
+// end to end, which doubles as the migration test), and exercises the
 // exported repository constructors directly.
 package postgres_test
 
@@ -64,6 +64,7 @@ func setupTestDB(t *testing.T) (*pgcommon.Pool, *pgxpool.Pool) {
 }
 
 func TestDepartmentRepository_CreatePatchLifecycle(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	ctx := context.Background()
@@ -106,6 +107,7 @@ func TestDepartmentRepository_CreatePatchLifecycle(t *testing.T) {
 }
 
 func TestDepartmentRepository_SystemDepartmentCannotBeRetired(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	ctx := context.Background()
@@ -120,6 +122,7 @@ func TestDepartmentRepository_SystemDepartmentCannotBeRetired(t *testing.T) {
 }
 
 func TestDepartmentRepository_DuplicateCodeConflict(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	ctx := context.Background()
@@ -132,6 +135,7 @@ func TestDepartmentRepository_DuplicateCodeConflict(t *testing.T) {
 }
 
 func TestDepartmentRepository_FindByID_NotFound(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	_, err := repo.FindByID(context.Background(), uuid.New())
@@ -142,6 +146,7 @@ func TestDepartmentRepository_FindByID_NotFound(t *testing.T) {
 }
 
 func TestDepartmentRepository_FindByCode_NotFound(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	_, err := repo.FindByCode(context.Background(), "NONEXISTENT")
@@ -152,6 +157,7 @@ func TestDepartmentRepository_FindByCode_NotFound(t *testing.T) {
 }
 
 func TestDepartmentRepository_Insert_NonUniqueCheckViolationPassesThrough(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	// departments_name_not_empty is a CHECK constraint, not the unique-code
@@ -165,6 +171,7 @@ func TestDepartmentRepository_Insert_NonUniqueCheckViolationPassesThrough(t *tes
 }
 
 func TestDepartmentRepository_Update_NoFieldsDelegatesToFindByID(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	ctx := context.Background()
@@ -179,6 +186,7 @@ func TestDepartmentRepository_Update_NoFieldsDelegatesToFindByID(t *testing.T) {
 }
 
 func TestDepartmentRepository_Update_CombinedNameAndIsActive(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	ctx := context.Background()
@@ -195,6 +203,7 @@ func TestDepartmentRepository_Update_CombinedNameAndIsActive(t *testing.T) {
 }
 
 func TestDepartmentRepository_Update_UnknownIDIsNotFound(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewDepartmentRepository(pool)
 	newName := "Ghost"
@@ -206,6 +215,7 @@ func TestDepartmentRepository_Update_UnknownIDIsNotFound(t *testing.T) {
 }
 
 func TestPlanRepository_Update_NilPatchRejected(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	_, err := repo.Update(context.Background(), domain.PlanStarter, nil)
@@ -216,6 +226,7 @@ func TestPlanRepository_Update_NilPatchRejected(t *testing.T) {
 }
 
 func TestPlanRepository_Update_EmptyPatchRejected(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	_, err := repo.Update(context.Background(), domain.PlanStarter, &domain.PlanPatch{RecordVersion: 1})
@@ -226,6 +237,7 @@ func TestPlanRepository_Update_EmptyPatchRejected(t *testing.T) {
 }
 
 func TestPlanRepository_Update_FeatureSetMarshalError(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	_, err := repo.Update(context.Background(), domain.PlanStarter, &domain.PlanPatch{
@@ -238,6 +250,7 @@ func TestPlanRepository_Update_FeatureSetMarshalError(t *testing.T) {
 }
 
 func TestPlanRepository_Update_AllFieldsAtOnce(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()
@@ -274,6 +287,7 @@ func TestPlanRepository_Update_AllFieldsAtOnce(t *testing.T) {
 }
 
 func TestPlanRepository_ScanPlan_MalformedFeatureSetJSON(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()
@@ -296,6 +310,7 @@ func TestPlanRepository_ScanPlan_MalformedFeatureSetJSON(t *testing.T) {
 }
 
 func TestPlanRepository_FindByCode_NotFoundAfterRowRemoved(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()
@@ -315,6 +330,7 @@ func TestPlanRepository_FindByCode_NotFoundAfterRowRemoved(t *testing.T) {
 }
 
 func TestPlanRepository_Update_NotFoundAfterRowRemoved(t *testing.T) {
+	t.Parallel()
 	pool, rawPool := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()
@@ -331,6 +347,7 @@ func TestPlanRepository_Update_NotFoundAfterRowRemoved(t *testing.T) {
 }
 
 func TestPlanRepository_SeededTiersAndPatch(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()
@@ -362,6 +379,7 @@ func TestPlanRepository_SeededTiersAndPatch(t *testing.T) {
 }
 
 func TestPlanRepository_TouchRowBumpsVersionAndTimestamp(t *testing.T) {
+	t.Parallel()
 	pool, _ := setupTestDB(t)
 	repo := pgadapter.NewPlanRepository(pool)
 	ctx := context.Background()

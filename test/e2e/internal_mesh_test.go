@@ -18,6 +18,7 @@ import (
 
 // Scenario CAI1-A-03: tenant_admin (not iam-system) → 403
 func TestInternalDepartments_TenantAdminRole_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/internal/departments", publicHeaders, nil)
 	assert.Equal(t, http.StatusForbidden, status, string(raw))
@@ -25,6 +26,7 @@ func TestInternalDepartments_TenantAdminRole_Returns403(t *testing.T) {
 
 // Scenario CAI1-A-04: iam-system role → 200 (authorized)
 func TestInternalDepartments_IamSystemRole_Authorized(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/internal/departments", systemHeaders, nil)
 	assert.Equal(t, http.StatusOK, status, string(raw))
@@ -32,6 +34,7 @@ func TestInternalDepartments_IamSystemRole_Authorized(t *testing.T) {
 
 // Scenario CAI1-H-02: returns ALL departments including inactive ones (no activeOnly filter)
 func TestInternalDepartments_ReturnsInactiveDeptsUnfiltered(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "int_h02_retire", "name": "Retire Internal H02", "is_system": false})
@@ -46,6 +49,7 @@ func TestInternalDepartments_ReturnsInactiveDeptsUnfiltered(t *testing.T) {
 
 // Scenario CAI1-H-03: each department in response contains all required fields
 func TestInternalDepartments_AllFieldsPresent(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/internal/departments", systemHeaders, nil)
 	require.Equal(t, http.StatusOK, status, string(raw))
@@ -66,6 +70,7 @@ func TestInternalDepartments_AllFieldsPresent(t *testing.T) {
 
 // Scenario CAI1-BL-02 / CROSS-CA-06: after dept PATCH, internal endpoint reflects updated name
 func TestInternalDepartments_ReflectsUpdateAfterPatch(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "int_bl02", "name": "Before Internal"})
@@ -79,6 +84,7 @@ func TestInternalDepartments_ReflectsUpdateAfterPatch(t *testing.T) {
 
 // Scenario CAI1-NOEVT-01: no outbox_events table — read endpoints emit no events
 func TestInternalDepartments_NoOutboxEventsOnRead(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodGet, "/api/v1/internal/departments", systemHeaders, nil) //nolint:errcheck
 
@@ -96,6 +102,7 @@ func TestInternalDepartments_NoOutboxEventsOnRead(t *testing.T) {
 
 // Scenario CAI2-A-02: platform_operator (not iam-system) → 403
 func TestInternalPlans_PlatformOperatorRole_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/internal/plans", operatorHeaders, nil)
 	assert.Equal(t, http.StatusForbidden, status, string(raw))
@@ -103,6 +110,7 @@ func TestInternalPlans_PlatformOperatorRole_Returns403(t *testing.T) {
 
 // Scenario CAI2-H-02: record_versions map values match the per-code versions from CAT-4b
 func TestInternalPlans_RecordVersionsMatchPlanVersions(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	_, internalRaw := doJSON(t, env, http.MethodGet, "/api/v1/internal/plans", systemHeaders, nil)
@@ -121,6 +129,7 @@ func TestInternalPlans_RecordVersionsMatchPlanVersions(t *testing.T) {
 
 // Scenario CAI2-H-03 / CROSS-CA-05: after plan PATCH, internal endpoint reflects update
 func TestInternalPlans_ReflectsUpdateAfterPatch(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"display_name": "Internal Visible", "record_version": 1}) //nolint:errcheck
@@ -131,6 +140,7 @@ func TestInternalPlans_ReflectsUpdateAfterPatch(t *testing.T) {
 
 // Scenario CAI2-NOEVT-01: no outbox_events table on internal read
 func TestInternalPlans_NoOutboxEventsOnRead(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodGet, "/api/v1/internal/plans", systemHeaders, nil) //nolint:errcheck
 

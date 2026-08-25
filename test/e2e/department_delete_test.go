@@ -17,6 +17,7 @@ import (
 
 // Scenario CA3-A-01: no identity headers → 401 (auth fires before 405)
 func TestDeleteDepartment_NoIdentityHeaders_Returns401(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "del_a01", "name": "No Auth"})
@@ -32,6 +33,7 @@ func TestDeleteDepartment_NoIdentityHeaders_Returns401(t *testing.T) {
 
 // Scenario CA3-A-02: identity present but no roles → 403
 func TestDeleteDepartment_NoRoles_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "del_a02", "name": "No Roles"})
@@ -49,6 +51,7 @@ func TestDeleteDepartment_NoRoles_Returns403(t *testing.T) {
 
 // Scenario CA3-A-03: tenant_admin role → 403
 func TestDeleteDepartment_TenantAdminRole_Returns403(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "del_a03", "name": "Admin Forbidden"})
@@ -67,6 +70,7 @@ func TestDeleteDepartment_TenantAdminRole_Returns403(t *testing.T) {
 
 // Scenario CA3-BL-02: DELETE system dept → 405 unconditional
 func TestDeleteDepartment_SystemDept_Returns405(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "del_bl02_sys", "name": "System Delete", "is_system": true})
@@ -83,6 +87,7 @@ func TestDeleteDepartment_SystemDept_Returns405(t *testing.T) {
 
 // Scenario CA3-BL-03: DELETE non-existent UUID → 405 (handler returns before any DB lookup)
 func TestDeleteDepartment_NonExistentUUID_Returns405(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodDelete,
 		env.baseURL+"/api/v1/operator/departments/00000000-0000-0000-0000-000000000099", nil)
@@ -96,6 +101,7 @@ func TestDeleteDepartment_NonExistentUUID_Returns405(t *testing.T) {
 
 // Scenario CA3-BL-04: invalid UUID path param + operator role → 405
 func TestDeleteDepartment_InvalidUUIDParam_Returns405(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req, err := http.NewRequest(http.MethodDelete,
 		env.baseURL+"/api/v1/operator/departments/not-a-uuid", nil)
@@ -109,6 +115,7 @@ func TestDeleteDepartment_InvalidUUIDParam_Returns405(t *testing.T) {
 
 // Scenario CA3-CT-01: no Content-Type header → still 405 (not 415); DELETE skips content-type check
 func TestDeleteDepartment_NoContentType_Returns405NotUnsupportedMediaType(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "del_ct01", "name": "CT Delete"})

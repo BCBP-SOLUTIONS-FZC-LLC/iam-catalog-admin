@@ -73,6 +73,7 @@ func decodeMap(t *testing.T, raw []byte) map[string]any {
 // Scenario:          Happy path
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E001_HealthAndReadyz(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	status, _ := doJSON(t, env, http.MethodGet, "/healthz", nil, nil)
@@ -94,6 +95,7 @@ func TestE2E001_HealthAndReadyz(t *testing.T) {
 // Scenario:          Happy path — operator creates a non-system department
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E010_CreateDepartment_Happy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -112,6 +114,7 @@ func TestE2E010_CreateDepartment_Happy(t *testing.T) {
 // Expected Result:   403 insufficient_role
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E011_CreateDepartment_RequiresOperatorRole(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", publicHeaders,
@@ -128,6 +131,7 @@ func TestE2E011_CreateDepartment_RequiresOperatorRole(t *testing.T) {
 //
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E012_CreateDepartment_DuplicateCode_Returns409(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	status1, _ := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -144,6 +148,7 @@ func TestE2E012_CreateDepartment_DuplicateCode_Returns409(t *testing.T) {
 // Feature:           CAT-1 · Missing required field → 400 validation_error
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E013_CreateDepartment_MissingName_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	status, raw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -159,6 +164,7 @@ func TestE2E013_CreateDepartment_MissingName_Returns400(t *testing.T) {
 // Feature:           CAT-2 · Rename + optimistic-lock success path
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E020_PatchDepartment_Happy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
@@ -177,6 +183,7 @@ func TestE2E020_PatchDepartment_Happy(t *testing.T) {
 // Feature:           CAT-2 · code is immutable → 422 field_immutable
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E021_PatchDepartment_ImmutableCode_Returns422(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "IMM_021", "name": "Immutable"})
@@ -192,6 +199,7 @@ func TestE2E021_PatchDepartment_ImmutableCode_Returns422(t *testing.T) {
 // Feature:           CAT-2 · is_system is immutable → 422 field_immutable
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E022_PatchDepartment_ImmutableIsSystem_Returns422(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "IMM_022", "name": "Immutable", "is_system": false})
@@ -207,6 +215,7 @@ func TestE2E022_PatchDepartment_ImmutableIsSystem_Returns422(t *testing.T) {
 // Feature:           CAT-2 · retiring a system department → 422 (D-7/OP invariant)
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E023_PatchDepartment_SystemDeptCannotBeRetired(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "SYS_023", "name": "System Dept", "is_system": true})
@@ -222,6 +231,7 @@ func TestE2E023_PatchDepartment_SystemDeptCannotBeRetired(t *testing.T) {
 // Feature:           CAT-2 · stale record_version → 409 optimistic_lock_conflict
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E024_PatchDepartment_StaleVersion_Returns409(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "STALE_024", "name": "Stale"})
@@ -237,6 +247,7 @@ func TestE2E024_PatchDepartment_StaleVersion_Returns409(t *testing.T) {
 // Feature:           CAT-2 · unknown department id → 404
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E025_PatchDepartment_NotFound(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch,
 		"/api/v1/operator/departments/11111111-1111-1111-1111-111111111111", operatorHeaders,
@@ -252,6 +263,7 @@ func TestE2E025_PatchDepartment_NotFound(t *testing.T) {
 // Feature:           CAT-3 · hard delete always blocked (D-4/OP-3)
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E030_DeleteDepartment_Always405(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "DEL_030", "name": "Del"})
@@ -273,6 +285,7 @@ func TestE2E030_DeleteDepartment_Always405(t *testing.T) {
 // Feature:           CAT-6 · public list, any authenticated caller, includes seeded system depts
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E040_ListDepartments_PublicIncludesSeeded(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/departments", publicHeaders, nil)
 	require.Equal(t, http.StatusOK, status, string(raw))
@@ -287,6 +300,7 @@ func TestE2E040_ListDepartments_PublicIncludesSeeded(t *testing.T) {
 // Feature:           CAT-6 · active_only=true filters out retired departments
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E041_ListDepartments_ActiveOnlyFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "RETIRED_041", "name": "Retired"})
@@ -310,6 +324,7 @@ func TestE2E041_ListDepartments_ActiveOnlyFilter(t *testing.T) {
 // Feature:           CAT-7 · single department read
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E042_GetDepartment_Happy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "GET_042", "name": "Gettable"})
@@ -324,6 +339,7 @@ func TestE2E042_GetDepartment_Happy(t *testing.T) {
 // Feature:           CAT-7 · unknown id → 404
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E043_GetDepartment_NotFound(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet,
 		"/api/v1/departments/11111111-1111-1111-1111-111111111111", publicHeaders, nil)
@@ -338,6 +354,7 @@ func TestE2E043_GetDepartment_NotFound(t *testing.T) {
 // Feature:           CAT-4 · list returns exactly the 3 seeded tiers
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E050_ListPlans_SeededTiers(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/operator/plans", operatorHeaders, nil)
 	require.Equal(t, http.StatusOK, status, string(raw))
@@ -359,6 +376,7 @@ func TestE2E050_ListPlans_SeededTiers(t *testing.T) {
 // Feature:           CAT-4 · enterprise ships NULL limits (CAT-D6, unlimited)
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E051_GetPlan_EnterpriseUnlimited(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/operator/plans/enterprise", operatorHeaders, nil)
 	require.Equal(t, http.StatusOK, status, string(raw))
@@ -371,6 +389,7 @@ func TestE2E051_GetPlan_EnterpriseUnlimited(t *testing.T) {
 // Feature:           CAT-4 · unknown plan code → 404
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E052_GetPlan_UnknownCode_Returns404(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/operator/plans/bogus", operatorHeaders, nil)
 	assert.Equal(t, http.StatusNotFound, status)
@@ -380,6 +399,7 @@ func TestE2E052_GetPlan_UnknownCode_Returns404(t *testing.T) {
 // Feature:           CAT-4 · non-operator caller rejected
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E053_ListPlans_RequiresOperatorRole(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/operator/plans", publicHeaders, nil)
 	assert.Equal(t, http.StatusForbidden, status)
@@ -393,6 +413,7 @@ func TestE2E053_ListPlans_RequiresOperatorRole(t *testing.T) {
 // Feature:           CAT-5 · explicit limit value + branding update
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E060_PatchPlan_Happy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/starter", operatorHeaders,
 		map[string]any{"workflow_template_limit": 7, "custom_branding": "logo", "record_version": 1})
@@ -407,6 +428,7 @@ func TestE2E060_PatchPlan_Happy(t *testing.T) {
 // Feature:           CAT-5 · explicit null → unlimited (CAT-D6 tri-state parsing)
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E061_PatchPlan_NullLimitMeansUnlimited(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"tender_limit": nil, "record_version": 1})
@@ -418,6 +440,7 @@ func TestE2E061_PatchPlan_NullLimitMeansUnlimited(t *testing.T) {
 // Feature:           CAT-5 · absent field is left untouched (tri-state: absent ≠ null)
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E062_PatchPlan_AbsentFieldUnchanged(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	// starter seeds workflow_template_limit=5; patch only display_name.
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/starter", operatorHeaders,
@@ -432,6 +455,7 @@ func TestE2E062_PatchPlan_AbsentFieldUnchanged(t *testing.T) {
 // Feature:           CAT-5 · stale record_version → 409
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E063_PatchPlan_StaleVersion_Returns409(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/starter", operatorHeaders,
 		map[string]any{"display_name": "X", "record_version": 99})
@@ -443,6 +467,7 @@ func TestE2E063_PatchPlan_StaleVersion_Returns409(t *testing.T) {
 // Feature:           CAT-5 · unknown plan code → 404
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E064_PatchPlan_UnknownCode_Returns404(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/bogus", operatorHeaders,
 		map[string]any{"display_name": "X", "record_version": 1})
@@ -453,6 +478,7 @@ func TestE2E064_PatchPlan_UnknownCode_Returns404(t *testing.T) {
 // Feature:           CAT-5 · negative limit rejected → 400
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E065_PatchPlan_NegativeLimit_Returns400(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/starter", operatorHeaders,
 		map[string]any{"workflow_template_limit": -1, "record_version": 1})
@@ -463,6 +489,7 @@ func TestE2E065_PatchPlan_NegativeLimit_Returns400(t *testing.T) {
 // Feature:           CAT-5 · non-scalar feature_set value → 400 invalid_feature_value (PLAN-6(d))
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E066_PatchPlan_NonScalarFeatureSetValue_Returns400InvalidFeatureValue(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/starter", operatorHeaders,
 		map[string]any{"feature_set": map[string]any{"nested": map[string]any{"a": 1}}, "record_version": 1})
@@ -480,6 +507,7 @@ func TestE2E066_PatchPlan_NonScalarFeatureSetValue_Returns400InvalidFeatureValue
 // Feature:           CAT-I1 · bulk department read, mesh-only (iam-system)
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E070_InternalDepartments_Happy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/internal/departments", systemHeaders, nil)
 	require.Equal(t, http.StatusOK, status, string(raw))
@@ -496,6 +524,7 @@ func TestE2E070_InternalDepartments_Happy(t *testing.T) {
 // Feature:           CAT-I1 · non-system caller rejected
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E071_InternalDepartments_RequiresSystemRole(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/internal/departments", operatorHeaders, nil)
 	assert.Equal(t, http.StatusForbidden, status, "platform_operator is not iam-system — CAT-I1 is mesh-only")
@@ -505,6 +534,7 @@ func TestE2E071_InternalDepartments_RequiresSystemRole(t *testing.T) {
 // Feature:           CAT-I2 · bulk plan read includes record_versions map
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E072_InternalPlans_Happy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/internal/plans", systemHeaders, nil)
 	require.Equal(t, http.StatusOK, status, string(raw))
@@ -523,6 +553,7 @@ func TestE2E072_InternalPlans_Happy(t *testing.T) {
 // Feature:           CAT-I2 · non-system caller rejected
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E073_InternalPlans_RequiresSystemRole(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/internal/plans", publicHeaders, nil)
 	assert.Equal(t, http.StatusForbidden, status)
@@ -536,6 +567,7 @@ func TestE2E073_InternalPlans_RequiresSystemRole(t *testing.T) {
 // Feature:           Missing identity headers entirely → 401
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E080_MissingIdentityHeaders_Returns401(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, _ := doJSON(t, env, http.MethodGet, "/api/v1/departments", nil, nil)
 	assert.Equal(t, http.StatusUnauthorized, status)
@@ -545,6 +577,7 @@ func TestE2E080_MissingIdentityHeaders_Returns401(t *testing.T) {
 // Feature:           Malformed x-user-id header → 401 missing_identity_headers
 // Priority: P2 · Severity: Major · Automation Status: Automated
 func TestE2E081_MalformedUserIDHeader_Returns401(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	status, raw := doJSON(t, env, http.MethodGet, "/api/v1/departments", func(req *http.Request) {
 		req.Header.Set("x-user-id", "not-a-uuid")
@@ -568,6 +601,7 @@ func TestE2E081_MalformedUserIDHeader_Returns401(t *testing.T) {
 //
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E090_CreateThenVisibleAcrossAllReadPaths(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	code := "FLOW_090"
 
@@ -598,6 +632,7 @@ func TestE2E090_CreateThenVisibleAcrossAllReadPaths(t *testing.T) {
 //
 // Priority: P1 · Severity: Blocker · Automation Status: Automated
 func TestE2E091_PatchPlanThenVisibleAcrossAllReadPaths(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/enterprise", operatorHeaders,
@@ -628,6 +663,7 @@ func TestE2E091_PatchPlanThenVisibleAcrossAllReadPaths(t *testing.T) {
 // Feature:           CAT-2 · renaming a system department → 422 system_name_immutable (D-11)
 // Priority: P1 · Severity: Major · Automation Status: Automated
 func TestE2E092_PatchDepartment_SystemDeptRename_Returns422SystemNameImmutable(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "SYS_092", "name": "System Dept", "is_system": true})
