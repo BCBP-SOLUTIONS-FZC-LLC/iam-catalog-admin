@@ -324,6 +324,15 @@ func TestPatchPlan_InvalidBranding_Returns400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, status, string(raw))
 }
 
+// Scenario CA5-V-09: display_name="" or whitespace-only → 400 validation_error
+func TestPatchPlan_EmptyDisplayName_Returns400(t *testing.T) {
+	env := newE2EEnv(t)
+	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
+		map[string]any{"display_name": "   ", "record_version": 1})
+	require.Equal(t, http.StatusBadRequest, status, string(raw))
+	assert.Equal(t, "validation_error", decodeMap(t, raw)["code"])
+}
+
 // Scenario CA5-V-08: body is JSON array → 400
 func TestPatchPlan_BodyIsArray_Returns400(t *testing.T) {
 	env := newE2EEnv(t)

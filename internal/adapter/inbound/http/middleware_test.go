@@ -266,6 +266,63 @@ func TestRequireSystem_NoIdentityContext(t *testing.T) {
 	assert.Equal(t, domain.ErrMissingIdentity.Error(), de.Code)
 }
 
+// TestHandleError_WithLoggerAndRequestID verifies the request_id field is
+// included in the structured log when gincommon's "request_id" key is set in
+// the gin context (lines 228-230 in HandleError's unhandled-500 branch).
+func TestHandleError_WithLoggerAndRequestID(t *testing.T) {
+	fl := &fakeLogger{}
+	SetLogger(fl)
+	t.Cleanup(func() { SetLogger(nil) })
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Set("request_id", "req-abc-123")
+
+	HandleError(c, errors.New("boom"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "req-abc-123", fl.fields["request_id"])
+}
+
+// TestHandleError_WithLoggerAndTraceID verifies the trace_id field is
+// included in the structured log when gincommon's "trace_id" key is set
+// (lines 231-233 in HandleError's unhandled-500 branch).
+func TestHandleError_WithLoggerAndTraceID(t *testing.T) {
+	fl := &fakeLogger{}
+	SetLogger(fl)
+	t.Cleanup(func() { SetLogger(nil) })
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Set("trace_id", "trace-xyz-456")
+
+	HandleError(c, errors.New("boom"))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "trace-xyz-456", fl.fields["trace_id"])
+}
+
+// TestErrorResponseWithDetails_TraceIDAndRequestIDIncluded verifies the
+// optional trace_id/request_id fields are written into the merged map when
+// set (lines 263-268 in errorResponseWithDetails).
+func TestErrorResponseWithDetails_TraceIDAndRequestIDIncluded(t *testing.T) {
+	er := ErrorResponse{
+		Error:     "some_error",
+		Code:      "some_error",
+		Status:    400,
+		Message:   "msg",
+		TraceID:   "trace-from-span",
+		RequestID: "req-from-middleware",
+	}
+	out := errorResponseWithDetails(er, nil)
+	assert.Equal(t, "trace-from-span", out["trace_id"])
+	assert.Equal(t, "req-from-middleware", out["request_id"])
+}
+
 func TestBufferedWriter_DirectMethods(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

@@ -13,6 +13,7 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -214,6 +215,42 @@ func (*alwaysErrCache) Health(_ context.Context) error              { return err
 func (*alwaysErrCache) Close() error                                { return nil }
 
 var _ port.Cache = (*alwaysErrCache)(nil)
+
+// ── CA6-AO-01: activeOnly=true includes active depts (loop body) ─────────
+
+// TestDepartmentService_List_ActiveOnlyFilter_IncludesActiveDept exercises
+// the `out = append(out, d)` branch inside List (the active-dept case of the
+// activeOnly filter loop — only reachable when activeOnly=true AND at least
+// one department is active).
+func TestDepartmentService_List_ActiveOnlyFilter_IncludesActiveDept(t *testing.T) {
+	svc := newDeptSvc()
+	mustCreateDept(t, svc, "active-ao-u50", "Active Dept", false)
+
+	active, err := svc.List(context.Background(), true)
+	require.NoError(t, err)
+	require.Len(t, active, 1)
+	assert.Equal(t, "active-ao-u50", active[0].Code)
+}
+
+// ── CA2-CHK-01: check violation for chk_system_department_active ─────────
+
+// TestDepartmentService_Patch_SystemActiveCheckViolation covers the
+// `case "chk_system_department_active"` branch in Patch's check-violation
+// switch — triggered when Postgres returns a real PgError SQLSTATE 23514
+// with ConstraintName "chk_system_department_active".
+func TestDepartmentService_Patch_SystemActiveCheckViolation(t *testing.T) {
+	repo := newFakeDepartmentRepo()
+	repo.updateErr = &pgconn.PgError{
+		Code:           "23514",
+		ConstraintName: "chk_system_department_active",
+		Message:        "system department cannot be retired",
+	}
+	svc := service.NewDepartmentService(repo, newFakeCache())
+	inactive := false
+	_, err := svc.Patch(context.Background(), uuid.New(), nil, &inactive, 1)
+	require.Error(t, err)
+	assert.Equal(t, domain.ErrSystemDepartmentCannotBeRetired.Error(), errCode(t, err))
+}
 
 // ── WithCacheTTL: positive duration overrides TTL ────────────────────────
 

@@ -234,6 +234,19 @@ func TestPatchDepartment_RecordVersionAsString_Returns400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, string(raw))
 }
 
+// Scenario CA2-V-08: name is whitespace-only (e.g. "   ") → 400 validation_error
+func TestPatchDepartment_WhitespaceOnlyName_Returns400(t *testing.T) {
+	env := newE2EEnv(t)
+	_, createRaw := doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
+		map[string]any{"code": "ptch_v08_ws", "name": "Whitespace Name"})
+	id := decodeMap(t, createRaw)["id"].(string)
+
+	status, raw := doJSON(t, env, http.MethodPatch, "/api/v1/operator/departments/"+id, operatorHeaders,
+		map[string]any{"name": "   ", "record_version": 1})
+	require.Equal(t, http.StatusBadRequest, status, string(raw))
+	assert.Equal(t, "validation_error", decodeMap(t, raw)["code"])
+}
+
 // Scenario CA2-V-07: both code and is_system in body → 422 field_immutable (code checked first)
 func TestPatchDepartment_BothImmutableFields_Returns422(t *testing.T) {
 	env := newE2EEnv(t)

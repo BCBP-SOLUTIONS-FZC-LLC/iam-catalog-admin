@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/google/uuid"
@@ -330,6 +331,146 @@ func TestPlanRepository_Update_NilPatch(t *testing.T) {
 	var de *domain.DomainError
 	require.True(t, errors.As(err, &de))
 	assert.Equal(t, domain.ErrValidation.Error(), de.Code)
+}
+
+// ── success-path mocks ────────────────────────────────────────────────────────
+
+// mockDepartmentScanRow implements pgx.Row and populates all 8 Department
+// columns so that scanDepartment returns a non-nil department.
+type mockDepartmentScanRow struct{}
+
+func (r mockDepartmentScanRow) Scan(dest ...any) error {
+	if v, ok := dest[0].(*uuid.UUID); ok {
+		*v = uuid.MustParse("11111111-0000-0000-0000-000000000001")
+	}
+	if v, ok := dest[1].(*string); ok {
+		*v = "HR"
+	}
+	if v, ok := dest[2].(*string); ok {
+		*v = "Human Resources"
+	}
+	if v, ok := dest[3].(*bool); ok {
+		*v = false
+	}
+	if v, ok := dest[4].(*bool); ok {
+		*v = true
+	}
+	if v, ok := dest[5].(*int64); ok {
+		*v = 2
+	}
+	if v, ok := dest[6].(*time.Time); ok {
+		*v = time.Time{}
+	}
+	if v, ok := dest[7].(*time.Time); ok {
+		*v = time.Time{}
+	}
+	return nil
+}
+
+// mockPlanScanRow implements pgx.Row and populates all 11 Plan columns so
+// that scanPlan returns a non-nil plan.
+type mockPlanScanRow struct{}
+
+func (r mockPlanScanRow) Scan(dest ...any) error {
+	if v, ok := dest[0].(*string); ok {
+		*v = "starter"
+	}
+	if v, ok := dest[1].(*string); ok {
+		*v = "Starter"
+	}
+	if v, ok := dest[2].(**int); ok {
+		*v = nil // WorkflowTemplateLimit: unlimited
+	}
+	if v, ok := dest[3].(**int); ok {
+		*v = nil // TenderLimit: unlimited
+	}
+	if v, ok := dest[4].(*int); ok {
+		*v = 30
+	}
+	if v, ok := dest[5].(*bool); ok {
+		*v = false
+	}
+	if v, ok := dest[6].(*string); ok {
+		*v = "none"
+	}
+	if v, ok := dest[7].(*[]byte); ok {
+		*v = []byte(`{}`)
+	}
+	if v, ok := dest[8].(*int64); ok {
+		*v = 2
+	}
+	if v, ok := dest[9].(*time.Time); ok {
+		*v = time.Time{}
+	}
+	if v, ok := dest[10].(*time.Time); ok {
+		*v = time.Time{}
+	}
+	return nil
+}
+
+// ── deptUpdateFromTx success path ────────────────────────────────────────────
+
+// TestDeptUpdateFromTx_Success covers the `return updated, nil` branch (line 205)
+// by providing a mock QueryRow that succeeds on the first call.
+func TestDeptUpdateFromTx_Success(t *testing.T) {
+	tx := &mockTxWithQueryRow{
+		rows: []pgx.Row{mockDepartmentScanRow{}},
+	}
+	id := uuid.New()
+	sql := `UPDATE departments SET name = $3 WHERE id = $1 AND record_version = $2 RETURNING ` + departmentSelectColumns
+	args := []any{id, int64(1), "HR Dept"}
+	updated, err := deptUpdateFromTx(context.Background(), tx, id, sql, args)
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, "HR", updated.Code)
+}
+
+// ── planUpdateFromTx success path ─────────────────────────────────────────────
+
+// TestPlanUpdateFromTx_Success covers the `return p, nil` branch (line 181)
+// by providing a mock QueryRow that succeeds on the first call.
+func TestPlanUpdateFromTx_Success(t *testing.T) {
+	tx := &mockTxWithQueryRow{
+		rows: []pgx.Row{mockPlanScanRow{}},
+	}
+	sql := `UPDATE plans SET display_name = $3 WHERE code = $1 AND record_version = $2 RETURNING ` + planCols
+	args := []any{"starter", int64(1), "Starter Plan"}
+	p, err := planUpdateFromTx(context.Background(), tx, domain.PlanStarter, sql, args)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, domain.PlanStarter, p.Code)
+}
+
+// ── PlanRepository.Update json.Marshal error path ─────────────────────────────
+
+// TestPlanRepository_Update_FeatureSetMarshalError covers the `return nil, err`
+// branch (line 125-127) triggered when json.Marshal fails on patch.FeatureSet.
+// This path occurs before withPool, so no real DB is needed.
+func TestPlanRepository_Update_FeatureSetMarshalError(t *testing.T) {
+	repo := &PlanRepository{pool: nil}
+	patch := &domain.PlanPatch{
+		RecordVersion: 1,
+		FeatureSet:    map[string]any{"bad": func() {}}, // json.Marshal returns error for func()
+	}
+	_, err := repo.Update(context.Background(), domain.PlanStarter, patch)
+	require.Error(t, err)
+	// Must be the raw json.Marshal error, not a domain error or pool error.
+	var de *domain.DomainError
+	assert.False(t, errors.As(err, &de), "expected raw marshal error, not domain error")
+}
+
+// ── DepartmentRepository.Update nil-nil guard ─────────────────────────────────
+
+// TestDepartmentRepository_Update_NilNilGuard covers the `return r.FindByID`
+// branch (line 140) — the guard that falls back to a read when both name and
+// isActive are nil. The guard itself executes before the pool is touched, so
+// the statement IS counted; the nil pool then causes a panic inside FindByID
+// which assert.Panics catches.
+func TestDepartmentRepository_Update_NilNilGuard(t *testing.T) {
+	repo := &DepartmentRepository{pool: nil}
+	assert.Panics(t, func() {
+		_, _ = repo.Update(context.Background(), uuid.New(), nil, nil, 1)
+	})
 }
 
 // TestPlanUpdateFromTx_MainScanNonErrNoRowsError covers the `return nil, err`

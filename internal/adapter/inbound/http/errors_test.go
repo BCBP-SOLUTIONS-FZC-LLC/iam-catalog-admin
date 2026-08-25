@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/gincommon"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestNewErrorResponse_NilContext(t *testing.T) {
@@ -44,4 +46,38 @@ func TestNewErrorResponse_RequestIDFromResponseHeader(t *testing.T) {
 
 	er := newErrorResponse(c, "some_code", "message")
 	assert.Equal(t, "req-from-response-header", er.RequestID)
+}
+
+// TestNewErrorResponse_TraceIDFromSpan verifies that a valid OTel span in the
+// request context populates the trace_id field (the span.SpanContext().IsValid()
+// branch in newErrorResponse).
+func TestNewErrorResponse_TraceIDFromSpan(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tp := sdktrace.NewTracerProvider()
+	tracer := tp.Tracer("test")
+	ctx, span := tracer.Start(context.Background(), "test-span")
+	defer span.End()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+
+	er := newErrorResponse(c, "some_code", "message")
+	assert.NotEmpty(t, er.TraceID)
+	assert.Len(t, er.TraceID, 32)
+}
+
+// TestNewErrorResponse_RequestIDFromGinContextValue verifies the first
+// RequestIDFromContext(c) branch — the value gincommon's RequestIDMiddleware
+// stamps into the gin context key "request_id".
+func TestNewErrorResponse_RequestIDFromGinContextValue(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Set("request_id", "req-from-gin-context")
+
+	er := newErrorResponse(c, "some_code", "message")
+	assert.Equal(t, "req-from-gin-context", er.RequestID)
 }

@@ -198,5 +198,69 @@ func TestDepartmentHandler_SuccessResponse_ContentTypeIsJSON(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
 }
 
+// ── CA6 — List with non-empty result (for loop body coverage) ────────
+
+// TestDepartmentHandler_List_WithNonEmptyResult exercises the for-range body
+// inside List (line 52-54) that populates DepartmentResponse items.
+func TestDepartmentHandler_List_WithNonEmptyResult(t *testing.T) {
+	h, _ := newDepartmentHandlerForTest()
+
+	createBody, _ := json.Marshal(DepartmentCreateRequest{Code: "SALES", Name: "Sales"})
+	c1, w1 := newTestContext(t, http.MethodPost, "/api/v1/operator/departments", createBody, []string{"platform_operator"})
+	h.Create(c1)
+	require.Equal(t, http.StatusCreated, w1.Code)
+
+	c2, w2 := newTestContext(t, http.MethodGet, "/api/v1/departments", nil, nil)
+	h.List(c2)
+	require.Equal(t, http.StatusOK, w2.Code)
+	var resp DepartmentListResponse
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "SALES", resp.Items[0].Code)
+}
+
+// ── CA2 — Patch success and optimistic-lock conflict paths ───────────
+
+// TestDepartmentHandler_Patch_Success covers the happy-path lines inside Patch
+// (metrics increment + 200 response, lines 182-183).
+func TestDepartmentHandler_Patch_Success(t *testing.T) {
+	h, _ := newDepartmentHandlerForTest()
+
+	createBody, _ := json.Marshal(DepartmentCreateRequest{Code: "HR", Name: "Human Resources"})
+	c1, w1 := newTestContext(t, http.MethodPost, "/api/v1/operator/departments", createBody, []string{"platform_operator"})
+	h.Create(c1)
+	require.Equal(t, http.StatusCreated, w1.Code)
+	var created DepartmentResponse
+	require.NoError(t, json.Unmarshal(w1.Body.Bytes(), &created))
+
+	patchBody := []byte(`{"name":"HR Dept","record_version":1}`)
+	c2, w2 := newTestContext(t, http.MethodPatch, "/api/v1/operator/departments/"+created.ID, patchBody, []string{"platform_operator"})
+	setParams(c2, gin.Params{{Key: "id", Value: created.ID}})
+	h.Patch(c2)
+	require.Equal(t, http.StatusOK, w2.Code)
+	var updated DepartmentResponse
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &updated))
+	assert.Equal(t, "HR Dept", updated.Name)
+}
+
+// TestDepartmentHandler_Patch_OptimisticLockConflict covers the OLC metric
+// increment (lines 176-178) triggered when record_version doesn't match.
+func TestDepartmentHandler_Patch_OptimisticLockConflict(t *testing.T) {
+	h, _ := newDepartmentHandlerForTest()
+
+	createBody, _ := json.Marshal(DepartmentCreateRequest{Code: "MKTING", Name: "Marketing"})
+	c1, w1 := newTestContext(t, http.MethodPost, "/api/v1/operator/departments", createBody, []string{"platform_operator"})
+	h.Create(c1)
+	require.Equal(t, http.StatusCreated, w1.Code)
+	var created DepartmentResponse
+	require.NoError(t, json.Unmarshal(w1.Body.Bytes(), &created))
+
+	patchBody := []byte(`{"name":"Marketing Dept","record_version":999}`)
+	c2, w2 := newTestContext(t, http.MethodPatch, "/api/v1/operator/departments/"+created.ID, patchBody, []string{"platform_operator"})
+	setParams(c2, gin.Params{{Key: "id", Value: created.ID}})
+	h.Patch(c2)
+	assert.Equal(t, http.StatusConflict, w2.Code)
+}
+
 // ── helper: bytes.NewBufferString used in raw body tests ──────────────
 var _ = bytes.NewBufferString

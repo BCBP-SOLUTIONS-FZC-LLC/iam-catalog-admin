@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,4 +63,23 @@ func TestInternalHandler_Plans_RepoError(t *testing.T) {
 	c, w := newTestContext(t, http.MethodGet, "/api/v1/internal/plans", nil, []string{"iam-system"})
 	h.Plans(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// TestInternalHandler_Departments_WithItems exercises the for-range loop body
+// (lines 44-46) by pre-populating the repo with one department.
+func TestInternalHandler_Departments_WithItems(t *testing.T) {
+	repo := newFakeDepartmentRepo()
+	id := uuid.New()
+	repo.rows[id] = domain.Department{
+		ID: id, Code: "GLOBAL", Name: "Global",
+		IsSystem: true, IsActive: true, RecordVersion: 1,
+	}
+	h := NewInternalHandler(newTestDepartmentServiceWithRepo(repo), newTestPlanService())
+	c, w := newTestContext(t, http.MethodGet, "/api/v1/internal/departments", nil, []string{"iam-system"})
+	h.Departments(c)
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp InternalDepartmentsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp.Departments, 1)
+	assert.Equal(t, "GLOBAL", resp.Departments[0].Code)
 }
