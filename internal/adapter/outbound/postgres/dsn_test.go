@@ -36,6 +36,17 @@ func TestApplyStatementTimeout_IgnoresNonPositiveDuration(t *testing.T) {
 	assert.Equal(t, "postgres://x", ApplyStatementTimeout("postgres://x"))
 }
 
+func TestDSNFromEnv_DATABASE_URL_TakesPrecedence(t *testing.T) {
+	const rawDSN = "postgres://user:pass@host:5432/db"
+	withEnv(t, map[string]string{
+		"DATABASE_URL":         rawDSN,
+		"PG_STATEMENT_TIMEOUT": "10s",
+	})
+
+	dsn := DSNFromEnv()
+	assert.Equal(t, rawDSN, dsn, "DATABASE_URL must be returned verbatim, no timeout appended")
+}
+
 func TestMigrationDSNFromEnv_FallsBackToAppDSN(t *testing.T) {
 	t.Setenv("MIGRATION_DATABASE_URL", "")
 	assert.Equal(t, "postgres://app-dsn", MigrationDSNFromEnv("postgres://app-dsn"))

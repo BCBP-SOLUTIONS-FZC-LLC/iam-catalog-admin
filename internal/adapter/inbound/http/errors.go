@@ -3,7 +3,6 @@ package http
 import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/gincommon"
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // newErrorResponse builds a fully-populated ErrorResponse. The wire shape
@@ -18,9 +17,8 @@ func newErrorResponse(c *gin.Context, code, message string) ErrorResponse {
 		Message: message,
 	}
 	if c != nil {
-		span := trace.SpanFromContext(c.Request.Context())
-		if span.SpanContext().IsValid() {
-			er.TraceID = span.SpanContext().TraceID().String()
+		if tid := gincommon.TraceIDFromContext(c); tid != "" {
+			er.TraceID = tid
 		}
 		if rid := gincommon.RequestIDFromContext(c); rid != "" {
 			er.RequestID = rid

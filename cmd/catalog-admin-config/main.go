@@ -87,7 +87,11 @@ func main() {
 	for _, w := range pgWarnings {
 		log.Warn("postgres config warning", map[string]interface{}{"key": w.Key, "reason": w.Reason})
 	}
-	pgCfg.DSN = pgadapter.ApplyStatementTimeout(pgCfg.DSN)
+	// DSNFromEnv (not a bare ApplyStatementTimeout(pgCfg.DSN)) so
+	// PG_STATEMENT_TIMEOUT is skipped when DATABASE_URL is set verbatim —
+	// it may have no `?` query string for ApplyStatementTimeout to safely
+	// append onto.
+	pgCfg.DSN = pgadapter.DSNFromEnv()
 	validatePostgresConfig(appEnv, pgCfg.DSN, pgWarnings)
 
 	// pgcommon.Config.Logger (pgcommon v1.2.0+, pkg/domain.Logger) routes the

@@ -12,7 +12,7 @@ GUC to inject, no `GUCProvider` on `pgcommon.NewPool` in `main.go`.
 **Pool configuration:**
 ```go
 pgCfg, pgWarnings := pgcommon.ConfigFromEnv()   // validates and warns instead of silently defaulting
-pgCfg.DSN = pgadapter.ApplyStatementTimeout(pgCfg.DSN)  // appends PG_STATEMENT_TIMEOUT if set
+pgCfg.DSN = pgadapter.DSNFromEnv()              // ApplyStatementTimeout, skipped when DATABASE_URL is set
 pgCfg.Logger = pgadapter.NewDomainLogger(log)   // routes pgcommon's slow-query WARN logs through this service's own structured logger
 ```
 `pgcommon.ConfigFromEnv()` is used instead of a hand-rolled `PG_*` env parse — the hand-rolled
@@ -20,6 +20,12 @@ version had a real bug where a typo'd `PG_MAX_CONNS` silently became `0` connect
 (`strconv.Atoi`'s error was discarded). `ConfigFromEnv` returns `[]pgcommon.ConfigWarning` instead;
 every warning is logged unconditionally, and `validatePostgresConfig` escalates `PG_SSLMODE`/
 `DATABASE_URL` insecure-config warnings to a startup panic only in `production`/`staging`.
+
+`DSNFromEnv` (not a bare `ApplyStatementTimeout(pgCfg.DSN)`) — `DATABASE_URL` is returned verbatim
+by `pgcommon.ConfigFromEnv` and may carry no `?` query string of its own, so appending
+`PG_STATEMENT_TIMEOUT`'s `&options=...` directly onto it (the previous behavior) could produce a
+malformed DSN when both were set. `DSNFromEnv` skips the append in that case — the same guard
+`iam-org-membership`/`iam-user-profile`'s identically-named helper applies.
 
 `PG_MAX_CONNS` is sized for a "read-heavy, write-rare workload" (LLD §15) — production default
 `10`. `PG_MIN_CONNS` is intentionally **omitted** from both `.env-example` and

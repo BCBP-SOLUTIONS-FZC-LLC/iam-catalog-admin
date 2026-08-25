@@ -4,85 +4,46 @@ All notable changes to `iam-catalog-admin` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+**This service has not yet been deployed to any environment** — `[Unreleased]` is pre-production
+development history, not a release note for users of a running system. Kept brief; the full
+rationale for any entry lives in `docs/lld/iam-lld-catalog-admin-config-service.md`'s revision
+history (§ "Revision history").
+
 ---
 
 ## [Unreleased]
 
 ### Added
 
-- Test coverage uplift: 17 previously-uncovered branches across the unit/whitebox tier (cache TTL
-  setters, `PlanService.Patch` validation, `HandleError`'s 413 path, `readyz` failure paths,
-  request-metrics/docs-route fallbacks, OCC-conflict repository paths, the Postgres domain
-  logger). Merged coverage 94.9% → 98.9% (242 test scenarios).
-- `TestRoles_AppRoleHasNoBYPASSRLS` (`test/e2e/roles_test.go`) — verifies `catalog_admin_app` has
-  no `BYPASSRLS` against a real Postgres container; runs under `make test-ci`.
-- `IAMCatalogAdminInternalErrorRate` alert (`deploy/monitoring/app-alerts.yml`) — CAT-I1/CAT-I2
-  error-rate alert (>10% over 5 minutes, SEV-2), scoped to `catalog_admin_requests_total{route=~"/api/v1/internal/.*"}`.
-- `IAMCatalogAdminOptimisticLockConflicts` alert, paired with the `catalog_admin_optimistic_lock_conflicts_total`
-  metric.
-- `CATALOG_TTL_SECONDS` env var (default `60`) externalizes the `cat:departments`/`cat:plans`
-  cache TTL via `DepartmentService`/`PlanService.WithCacheTTL`; a parse failure logs a warning and
-  falls back to 60s rather than discarding the error.
+- Test coverage uplift to 98.9% (242 scenarios).
+- `TestRoles_AppRoleHasNoBYPASSRLS` — verifies `catalog_admin_app` has no `BYPASSRLS`.
+- `IAMCatalogAdminInternalErrorRate` and `IAMCatalogAdminOptimisticLockConflicts` alerts.
+- `CATALOG_TTL_SECONDS` env var for the `cat:departments`/`cat:plans` cache TTL.
 
 ### Changed
 
-- **`make test-postgres`/`make test-e2e` (and therefore `make test-ci`) run dramatically faster.**
-  Every test in `test/postgres`/`test/e2e` spins up its own isolated Postgres testcontainer (and,
-  for e2e, its own miniredis instance and `httptest.Server`) — fully independent, but none of the
-  240 test functions called `t.Parallel()`, so Go ran them one at a time per package, paying the
-  ~1s container-boot cost serially. Added `t.Parallel()` to every top-level test in both packages
-  (safe: no shared package-level state, no fixed ports, no `os.Setenv`, no subtests). Measured on a
-  10-CPU box: `test/postgres` 31s → 8s, `test/e2e` 220s → 50s, full `make test-ci` (with `-race`)
-  down to ~73s.
-- `pgcommon.ConfigFromEnv()` adopted for Postgres config, replacing a hand-rolled `PG_*` parser
-  that silently defaulted `PG_MAX_CONNS` to `0` on a malformed value. `validatePostgresConfig`
-  logs every config warning and escalates `PG_SSLMODE`/`DATABASE_URL` insecure-config warnings to
-  a startup panic in `production`/`staging`.
-- Postgres error matching (`Insert`'s unique-violation, `Patch`'s check-violation paths) now uses
-  `pgcommon.IsUniqueViolation`/`IsCheckViolation`/`ConstraintName` instead of hand-rolled
-  message-substring search. `prevent_system_department_name_change`'s trigger now raises with a
-  structured `ERRCODE = 'check_violation'` + synthetic `CONSTRAINT` name so it matches the same
-  way a real CHECK constraint does.
-- `/healthz` now serves `gincommon.HealthHandler()` directly instead of a local reimplementation.
-- All five §13.2 metrics now exist under the `catalog_admin_` prefix (previously a mix of
-  `catadmin_`-prefixed and missing metrics): `catalog_admin_requests_total`/`_request_duration_seconds`,
-  `_writes_total`, `_optimistic_lock_conflicts_total`, `_cache_hits_total`/`_cache_misses_total`.
-- `/metrics` now serves from a dedicated `METRICS_PORT` (default `9090`), separate from the API's
-  `APP_PORT` (`8081`), so NetworkPolicy can grant scrape access without also granting API access.
-- `valkey/cache.go`'s `Delete` and `middleware.go`'s unhandled-500 log line now go through a
-  structured logger (`SetLogger`) instead of stdlib `log.Printf`.
-- `validateRequiredEnv` now enforces `PG_SSLMODE != disable` in production/staging, mirroring the
-  existing `VALKEY_URL` TLS check.
-- The two top-level server goroutines in `main.go` now `recover()` and log-then-`os.Exit(1)` on
-  panic instead of crashing with a bare stack trace.
-- `errorResponseWithDetails` now re-syncs the response body's `error` field to the final,
-  post-`WithDetails` `code`, so a handler-level sub-code (e.g. `duplicate_code` over `conflict`)
-  no longer leaves `error`/`code` disagreeing.
-- Postgres migrations consolidated into a single file, `000001_init_schema` — this service has not
-  yet been deployed, so there is no environment holding a prior multi-file migration history that
-  needs preserving.
+- `test/postgres`/`test/e2e` parallelized (`t.Parallel()`) — `make test-ci` ~3x faster.
+- Postgres config resolved via `pgcommon.ConfigFromEnv()`; error matching via
+  `pgcommon.IsUniqueViolation`/`IsCheckViolation`/`ConstraintName`.
+- `/healthz` now serves `gincommon.HealthHandler()` directly.
+- Metrics unified under the `catalog_admin_` prefix; `/metrics` moved to a dedicated
+  `METRICS_PORT`.
+- `cache.go`/`middleware.go` log through the structured logger instead of stdlib fallbacks; server
+  goroutines `recover()` and log-then-exit on panic.
+- Postgres migrations consolidated into a single `000001_init_schema` file.
 
 ### Fixed
 
-- Two flaky metrics-assertion tests (`TestRequestMetricsMiddleware_RecordsRouteAndStatus`/
-  `_RecordsErrorStatus`) asserted an absolute counter value against a package-level global;
-  now assert a before/after delta.
-- Stale docs (LLD, `MIGRATION_RUNBOOK.md`, `IMPLEMENTATION_GAP_ANALYSIS.md`) claimed this service
-  was "not yet receiving production traffic" — false; `iam-org-membership`'s cutover to this
-  service as sole system of record for `departments`/`plans` is already complete. Doc-only
-  correction.
+- `errors.go` now sources `trace_id` via `gincommon.TraceIDFromContext`, matching `middleware.go`,
+  instead of the raw OTel SDK API.
+- `main.go`'s Postgres DSN assembly (`postgres.DSNFromEnv`) no longer corrupts `DATABASE_URL` when
+  combined with `PG_STATEMENT_TIMEOUT`.
+- Flaky metrics-assertion tests now assert before/after deltas instead of absolute counter values.
 
 ### Removed
 
-- A local `audit_log` Postgres table, built to close the "no audit trail" gap (LLD §10.7), was
-  reverted after confirming the platform's real Audit Log Service (HLD §5.7) has no specified
-  integration contract yet. CAT-1/CAT-2/CAT-5 writes remain covered only by structured request
-  logging until that contract exists.
-- `MIGRATION_RUNBOOK.md`, `IMPLEMENTATION_GAP_ANALYSIS.md`, `EVENT_COMPATIBILITY_REPORT.md`, and
-  `O_AND_M_DELTA.md` — four point-in-time docs superseded by the now-complete Wave-1
-  extraction/cutover (LLD §12/§16) and already duplicated in the LLD's own decision register
-  (§14) and revision history. Every cross-reference to them elsewhere in the repo updated or
-  removed in the same pass (LLD v1.27).
+- Reverted a local `audit_log` table — no Audit Log Service ingest contract exists yet.
+- Superseded rollout/gap-analysis docs; content is now in the LLD's own decision register.
 
 ---
 

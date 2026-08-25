@@ -20,10 +20,27 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// DSNFromEnv builds the application pool's DSN via pgcommon.ConfigFromEnv,
+// applying ApplyStatementTimeout on top — except when DATABASE_URL is set,
+// in which case pgcommon returns it verbatim and it may have no `?` query
+// string for ApplyStatementTimeout to safely append onto (see its own
+// contract below). Mirrors iam-org-membership/iam-user-profile's
+// postgres.DSNFromEnv so DSN assembly has exactly one implementation.
+func DSNFromEnv() string {
+	cfg, _ := pgcommon.ConfigFromEnv()
+	if os.Getenv("DATABASE_URL") != "" {
+		return cfg.DSN
+	}
+	return ApplyStatementTimeout(cfg.DSN)
+}
+
 // ApplyStatementTimeout appends a `statement_timeout` libpq option to dsn
 // when PG_STATEMENT_TIMEOUT is set, e.g. "5s". pgcommon.ConfigFromEnv has
 // no concept of statement timeout, so this is applied as a second step on
-// top of the DSN it returns, not folded into pgcommon.Config itself.
+// top of the DSN it returns, not folded into pgcommon.Config itself. Only
+// safe when dsn already has a `?...` query string (true when built from
+// individual PG_* vars via net/url) — callers must route DATABASE_URL
+// through DSNFromEnv instead of calling this directly on it.
 func ApplyStatementTimeout(dsn string) string {
 	t := os.Getenv("PG_STATEMENT_TIMEOUT")
 	if t == "" {

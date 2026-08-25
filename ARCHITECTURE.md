@@ -130,7 +130,9 @@ the full key/TTL/invalidation table.
   `migrate.go` (`//go:embed migrations/*.sql` + `platform-pgcommon/pkg/migrate.Runner`), `db.go`
   (`withPool` — every repository call runs in its own single-statement transaction; there is no
   multi-statement write in this service's surface, so there is no higher-level `TxRunner`
-  abstraction to speak of, unlike `iam-org-membership`).
+  abstraction to speak of, unlike `iam-org-membership`; `DSNFromEnv` skips `ApplyStatementTimeout`'s
+  DSN append when `DATABASE_URL` is set, matching `iam-org-membership`/`iam-user-profile`'s
+  identically-named helper).
 - **Outbound Valkey** (`outbound/valkey/`) — thin `go-redis` wrapper, records cache hit/miss
   metrics at this layer (not in `core/service`) so the hexagonal boundary stays clean.
 - **Outbound metrics** (`outbound/metrics/`) — two `CounterVec`s, pre-initialized label values so

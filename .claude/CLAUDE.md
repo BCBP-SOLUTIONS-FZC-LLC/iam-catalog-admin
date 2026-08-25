@@ -152,7 +152,7 @@ iam-catalog-admin/
 │           ├── postgres/              # repository impls + migrations/
 │           │   ├── department_repository.go
 │           │   ├── plan_repository.go
-│           │   ├── db.go              # ApplyStatementTimeout, MigrationDSNFromEnv, withPool, wrapConnErr
+│           │   ├── db.go              # DSNFromEnv, ApplyStatementTimeout, MigrationDSNFromEnv, withPool, wrapConnErr
 │           │   ├── logger.go          # NewDomainLogger — bridges pgcommon's slow-query logger
 │           │   ├── migrate.go         # RunMigrations (embed.FS, bypasses PgBouncer)
 │           │   └── migrations/        # 000001_init_schema (single consolidated migration; pre-prod)
@@ -283,12 +283,24 @@ dependency, which is how Clean Architecture is *supposed* to work there — impo
   `DomainError.Code` → HTTP status); `isDBUnavailableSQLState` (SQLSTATE class `08`/`53`/`57`/`58`
   → `503 db_unavailable`); `NormalizeAuthErrors` (rewrites `platform-gincommon`'s bare 401s to
   include this service's `code` field).
+- **`internal/adapter/inbound/http/errors.go`** — `newErrorResponse` populates `trace_id`/
+  `request_id` via `gincommon.TraceIDFromContext(c)`/`RequestIDFromContext(c)` (with a header
+  fallback for the latter) — the same source `HandleError` above uses for its structured log line.
+  Previously read `trace_id` via the raw `go.opentelemetry.io/otel/trace` API directly instead of
+  the `gincommon` helper (fixed — see CHANGELOG `[Unreleased]`); no code in this repo imports the
+  OTel SDK directly anymore (`otel/sdk`/`otel/trace` are `// indirect` in `go.mod`, pulled in
+  transitively by `platform-gincommon` only).
 - **`internal/adapter/outbound/postgres/db.go`** — `withPool` wraps every repository call in its
   own single-statement transaction via `pgcommon.RunInTx` — there is **no** higher-level
   `TxRunner`/event-injection seam here (unlike `iam-user-profile`), because every write in this
   service is single-row, single-table (CAT-FAIL-3). `wrapConnErr` converts non-protocol DB errors
   into `ErrDependencyUnavailable`, passing `DomainError`/`pgconn.PgError`/`pgx.ErrNoRows`/context
-  cancellations through unchanged.
+  cancellations through unchanged. `DSNFromEnv` is `main.go`'s single call site for resolving the
+  app DSN — it skips `ApplyStatementTimeout`'s append when `DATABASE_URL` is set, since
+  `pgcommon.ConfigFromEnv` returns that value verbatim and it may have no `?` query string to
+  safely append onto (fixed — a real bug where the append was previously unconditional; see
+  CHANGELOG `[Unreleased]`), matching the identically-named helper in `iam-org-membership`/
+  `iam-user-profile`.
 - **`internal/adapter/outbound/postgres/migrate.go`** — `RunMigrations` uses the **direct**
   (non-PgBouncer) DSN via `MigrationDSNFromEnv`, because `pg_advisory_lock` is session-scoped and
   breaks under transaction pooling.

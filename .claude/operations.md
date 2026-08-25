@@ -155,7 +155,7 @@ growth is a manual "add replicas" decision, not an automated scale target.
 | `PG_MIN_CONNS` | *(unset — pgcommon default 2)* | Do not set to `0`; `pgcommon.ConfigFromEnv` rejects it and warns |
 | `PG_BOUNCER_MODE` | `true` (prod) / `false` (local) | If `true`, `MIGRATION_DATABASE_URL` (or `DATABASE_URL`) is **required** — checked at startup |
 | `MIGRATION_DATABASE_URL` | — | Direct (non-PgBouncer) DSN for migrations — `pg_advisory_lock` is session-scoped |
-| `PG_STATEMENT_TIMEOUT` | — | e.g. `5s`; appended to the DSN via `ApplyStatementTimeout` |
+| `PG_STATEMENT_TIMEOUT` | — | e.g. `5s`; appended to the DSN via `ApplyStatementTimeout`, called from `DSNFromEnv` — skipped when `DATABASE_URL` is set (may lack a `?` query string to append onto) |
 | `PG_SLOW_QUERY_THRESHOLD` | `200ms` | Slow-query log threshold |
 | `VALKEY_URL` | `localhost:6381` (local) | Redis connection string; **must** use `rediss://` in production/staging (checked at startup) |
 | `OTEL_SERVICE_NAME` | — | Service name for OTel |
