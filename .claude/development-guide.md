@@ -213,6 +213,6 @@ design (CAT-FAIL-1).
 
 ---
 
-**LLD version:** v1.26 (`docs/lld/iam-lld-catalog-admin-config-service.md`) — check its revision
+**LLD version:** v1.27 (`docs/lld/iam-lld-catalog-admin-config-service.md`) — check its revision
 history table before assuming any section number or claim above is still current; this service's
 own history shows the LLD gets corrected via dedicated audit passes fairly often.

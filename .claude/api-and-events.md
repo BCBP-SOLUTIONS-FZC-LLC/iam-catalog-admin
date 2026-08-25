@@ -172,7 +172,7 @@ stale-if-error fallback. This bound applies to `departments` too, even though it
 correctness-adjacent access gate (D-5/TD-1 — no new tenant-department activation against a
 retired department) rather than only an entitlement value — accepted because department
 retirement is a rare, planned operator action (CAT-D7). See `CACHE_DESIGN.md` for the full
-rationale and `O_AND_M_DELTA.md` for the concrete Core-side change this required.
+rationale.
 
 # Events
 
@@ -198,8 +198,7 @@ a department-catalog edit has ever appeared in the platform HLD's event catalogu
 If a genuine event need ever arises (e.g. a future `DepartmentCatalogChanged` notification in
 place of today's TTL-only propagation, tracked as a deferred option under CAT-D3), it must re-enter
 the normal `schema-gov` pipeline and receive an HLD §9.4 catalogue entry like any other IAM event —
-no ad hoc event type may bypass that governance (CAT-EVT-5). See `EVENT_COMPATIBILITY_REPORT.md`
-for the point-in-time confirmation of this posture.
+no ad hoc event type may bypass that governance (CAT-EVT-5).
 
 **Audit:** every write (CAT-1/CAT-2/CAT-5) is audit-relevant by the same convention the platform
 applies to other direct (non-bus-event) admin actions, but **no durable, queryable audit record

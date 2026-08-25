@@ -163,5 +163,5 @@ call failure coinciding with an empty/expired `om:*` cache past the 24 h stale-i
 now a hard failure for Core's department/plan-dependent writes, not a degraded-but-functional one.
 **Rollback past this point requires restoring Core's tables from the pre-drop snapshot and
 replaying any Catalog-Service-only writes since cutover** — reversibility ended when step 4
-executed; see `MIGRATION_RUNBOOK.md` and LLD §12 for the full historical record and Appendix C
-(§22) for the (now largely historical) recovery runbooks.
+executed; see LLD §12 for the full historical record and Appendix C (§22) for the (now largely
+historical) recovery runbooks.

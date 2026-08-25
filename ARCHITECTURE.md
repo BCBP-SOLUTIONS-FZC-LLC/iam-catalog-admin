@@ -267,9 +267,9 @@ no environment has applied an earlier multi-file history that needs preserving.
 CAT-EVT-1..5). No outbox table, no outbox-runner goroutine, no SNS publisher, no SQS consumer, no
 `processed_events` dedup ledger, no AsyncAPI spec, no `platform-events` dependency in `go.mod`. A
 write becomes visible to consumers purely through the cache-TTL mechanism above — there is no
-faster, event-driven path, by design. Full rationale and compatibility check against every named
-consumer (O&M, AuthZ Enrichment, Realm Provisioner, Billing, Workflow):
-`EVENT_COMPATIBILITY_REPORT.md`.
+faster, event-driven path, by design. Confirmed compatible with every named consumer (O&M, AuthZ
+Enrichment, Realm Provisioner, Billing, Workflow) — none has ever subscribed to a `departments`/
+`plans`-adjacent event, because none has ever existed.
 
 ## What this service deliberately does not have
 
@@ -291,7 +291,7 @@ is a design decision, not an oversight:
 This service has none outbound. Inbound: operator tooling (CAT-1..5), `iam-org-membership`
 (CAT-I1/CAT-I2, via its own `CatalogService` caching decorator), and — once Wave 2 ships — the
 Group Mapping Service (CAT-I1 only). See the root `README.md`'s "Cross-service dependencies"
-table and `O_AND_M_DELTA.md` for the O&M-side integration contract.
+table.
 
 ## Observability
 
@@ -342,4 +342,4 @@ Valkey + the actual production router, driven over `net/http`).
 
 - `catalog-admin-config-service-lld.md` — the authoritative design document every §-reference above points to.
 - `README.md` — API overview, local dev, environment variables.
-- `CACHE_DESIGN.md`, `EVENT_COMPATIBILITY_REPORT.md`, `IMPLEMENTATION_GAP_ANALYSIS.md`, `O_AND_M_DELTA.md`, `MIGRATION_RUNBOOK.md`.
+- `CACHE_DESIGN.md` — cache keys, TTLs, invalidation.

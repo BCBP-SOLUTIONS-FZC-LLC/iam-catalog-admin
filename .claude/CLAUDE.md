@@ -170,7 +170,7 @@ iam-catalog-admin/
 │   │   ├── README.md                  # index of mermaid diagrams
 │   │   └── mermaid/                   # layer-model.mmd, write-flow.mmd, cache-strategy.mmd
 │   └── lld/
-│       └── iam-lld-catalog-admin-config-service.md  # the authoritative LLD (currently v1.26)
+│       └── iam-lld-catalog-admin-config-service.md  # the authoritative LLD (currently v1.27)
 ├── scripts/                           # local dev + build tooling only
 │   ├── merge_coverage.py              # merges per-suite coverage profiles for the CI gate
 │   └── patch-swagger-extensions.py    # post-processes docs/swagger during `make swag`
@@ -188,10 +188,6 @@ iam-catalog-admin/
 ├── Dockerfile  docker-compose.yml  Makefile  go.mod  .go-arch-lint.yml
 ├── ARCHITECTURE.md                    # detailed architecture documentation
 ├── CACHE_DESIGN.md                    # cat:* cache design + consumer-side cache reference (LLD §8)
-├── MIGRATION_RUNBOOK.md               # Wave-1 rollout phases (historical — migration is complete)
-├── IMPLEMENTATION_GAP_ANALYSIS.md     # requirement-by-requirement comparison vs. source LLD
-├── EVENT_COMPATIBILITY_REPORT.md      # confirms this service publishes/consumes no events
-├── O_AND_M_DELTA.md                   # the concrete code change required in iam-org-membership
 ├── CHANGELOG.md                       # Keep a Changelog format; read [Unreleased] for latest fixes
 └── README.md                          # onboarding + quick-start
 ```
@@ -308,7 +304,7 @@ dependency, which is how Clean Architecture is *supposed* to work there — impo
   composition-root call path.
 - **`pkg/requestctx/context.go`** — `RequestContext{UserID, TenantID, Roles, ClientIP, UserAgent}`,
   `HasRole`, `IsOperator()` (`platform_operator` role), `IsSystem()` (`iam-system` role).
-- **`docs/lld/iam-lld-catalog-admin-config-service.md`** — the authoritative LLD (currently v1.26).
+- **`docs/lld/iam-lld-catalog-admin-config-service.md`** — the authoritative LLD (currently v1.27).
   Read this before making any contract-level change; it carries a decision register (CAT-D1
   through CAT-D12, §14) and a full error taxonomy (§20) that must stay in sync with the code.
 
@@ -325,8 +321,11 @@ Supplementary docs in the repo root:
 - **`README.md`** — onboarding, prerequisites, quick-start, local dev setup
 - **`ARCHITECTURE.md`** — detailed architecture narrative
 - **`CACHE_DESIGN.md`** — `cat:*` cache design + the consumer-side (`om:*`/`gm:*`) cache reference
-- **`MIGRATION_RUNBOOK.md`** — the Wave-1 rollout phases (historical; migration is complete)
-- **`IMPLEMENTATION_GAP_ANALYSIS.md`** — requirement-by-requirement comparison vs. the source LLD
-- **`EVENT_COMPATIBILITY_REPORT.md`** — confirms this service publishes/consumes no events
-- **`O_AND_M_DELTA.md`** — the concrete code change this extraction required in `iam-org-membership`
 - **`CHANGELOG.md`** — Keep a Changelog format; check `[Unreleased]` first for the latest fixes/audits
+
+The Wave-1 extraction/rollout history, the O&M-side integration delta, the pre-implementation
+LLD-vs-O&M gap analysis, and the no-events compatibility check (formerly `MIGRATION_RUNBOOK.md`,
+`O_AND_M_DELTA.md`, `IMPLEMENTATION_GAP_ANALYSIS.md`, `EVENT_COMPATIBILITY_REPORT.md`) were removed
+once superseded — the migration is complete and the O&M-side change already landed (CHANGELOG.md's
+`[Unreleased]` "migration-status claim" entry), so the durable record now lives in the LLD's own
+revision history and decision register (§12 Migration Plan, §14 Decision Register) instead.

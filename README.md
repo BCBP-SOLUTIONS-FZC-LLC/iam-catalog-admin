@@ -21,9 +21,8 @@ allowed to be briefly stale (LLD §8, §11).
 `iam-org-membership` originally owned both tables directly. ADR-0007 splits three low-risk,
 tenant-independent concerns out of that service into their own leaf services; this is Wave 1, the
 lowest-risk cut — neither table carries a `tenant_id`, neither is RLS-protected, and neither
-participates in Org & Membership's I-8 hot-path SQL join. See `IMPLEMENTATION_GAP_ANALYSIS.md` for
-the full requirement-by-requirement comparison against the source LLD, and `MIGRATION_RUNBOOK.md`
-for the seven-phase rollout this extraction follows.
+participates in Org & Membership's I-8 hot-path SQL join. The seven-phase rollout this extraction
+followed is complete (LLD §12/§16) — this service is O&M's sole system of record for both tables.
 
 ## API overview
 
@@ -90,15 +89,15 @@ tables (no `DELETE` grant — hard delete is also trigger-blocked, defense in de
 
 Same technology baseline as every other IAM service: `platform-gincommon` (middleware,
 observability, identity-header parsing) and `platform-pgcommon` (pooled Postgres, migrations,
-transactions). **Not used**: `platform-events` (no outbox/SNS/SQS — see `EVENT_COMPATIBILITY_REPORT.md`).
+transactions). **Not used**: `platform-events` (no outbox/SNS/SQS — this service publishes and
+consumes no events, LLD §10).
 
 ## Integrating with other services
 
 Core Org & Membership is the primary consumer, via a new outbound client
 (`internal/adapter/outbound/catalogadmin` in that repo) wrapped by a caching decorator
 (`service.CatalogService`) that implements the read side with a 600s primary / 24h
-stale-if-error two-tier cache. See `O_AND_M_DELTA.md` for the full integration contract this
-service's consumers are built against, and `CACHE_DESIGN.md` for the TTL/invalidation rules a new
+stale-if-error two-tier cache. See `CACHE_DESIGN.md` for the TTL/invalidation rules a new
 consumer should replicate.
 
 1. **Prerequisites** — mesh mTLS reachability to this service; no auth beyond the gateway-header
@@ -266,7 +265,7 @@ make build   # bin/catalog-admin-config
 
 Explicitly not this service's concern (LLD §3): pricing/billing data, usage metering, the
 per-tenant feature-flag override delta (`tenants.feature_flags` stays in Core), and any event
-publishing (see `EVENT_COMPATIBILITY_REPORT.md` for why).
+publishing (this service publishes and consumes no events, LLD §10).
 
 ## Contributing
 
@@ -283,8 +282,7 @@ team-fit rationale — low pager load, operator-driven write volume).
 ## Docs
 
 - `ARCHITECTURE.md` — layers, request lifecycle, cache design, data model, what's deliberately absent
-- `IMPLEMENTATION_GAP_ANALYSIS.md` — LLD-vs-O&M gap analysis that drove this implementation
 - `CACHE_DESIGN.md` — cache keys, TTLs, invalidation
-- `EVENT_COMPATIBILITY_REPORT.md` — why this service has no events, and compatibility check
-- `O_AND_M_DELTA.md` — required changes in `iam-org-membership` (documented; applied on the O&M side)
-- `MIGRATION_RUNBOOK.md` — seven-phase rollout plan
+- `CHANGELOG.md` — Keep a Changelog format; check `[Unreleased]` first for the latest fixes/audits
+- `docs/lld/iam-lld-catalog-admin-config-service.md` — the authoritative LLD (decision register,
+  full error taxonomy, revision history covering the now-complete Wave-1 extraction/cutover)

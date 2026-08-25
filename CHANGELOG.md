@@ -78,6 +78,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reverted after confirming the platform's real Audit Log Service (HLD §5.7) has no specified
   integration contract yet. CAT-1/CAT-2/CAT-5 writes remain covered only by structured request
   logging until that contract exists.
+- `MIGRATION_RUNBOOK.md`, `IMPLEMENTATION_GAP_ANALYSIS.md`, `EVENT_COMPATIBILITY_REPORT.md`, and
+  `O_AND_M_DELTA.md` — four point-in-time docs superseded by the now-complete Wave-1
+  extraction/cutover (LLD §12/§16) and already duplicated in the LLD's own decision register
+  (§14) and revision history. Every cross-reference to them elsewhere in the repo updated or
+  removed in the same pass (LLD v1.27).
 
 ---
 

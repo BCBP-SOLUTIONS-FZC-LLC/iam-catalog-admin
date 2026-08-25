@@ -3,7 +3,7 @@
 Per `catalog-admin-config-service-lld.md` §8. This document covers only the cache layer this
 repository owns (`cat:*`). The consumer-side caches (`om:departments`, `om:plans`,
 `gm:departments`, and their `:stale` fallbacks) are owned by Core Org & Membership and the Group
-Mapping Service respectively — see `O_AND_M_DELTA.md` for what changes there.
+Mapping Service respectively.
 
 ## This service's own cache
 
@@ -49,5 +49,4 @@ their cache, not this service's problem to solve beyond keeping its own `cat:*` 
 
 These are out of scope for this repository (they live in `iam-org-membership` and the
 Group Mapping Service's own codebases) and are called out here only so the full propagation
-picture is legible from one document. See `O_AND_M_DELTA.md` for the concrete code change
-required in O&M.
+picture is legible from one document.
