@@ -8,7 +8,9 @@
 *.env
 
 # Development tooling and docs
-docs/
+# (docs/swagger/ is real Go source generated code that main.go imports — keep it)
+docs/architecture/
+docs/lld/
 deploy/
 scripts/
 *.md
