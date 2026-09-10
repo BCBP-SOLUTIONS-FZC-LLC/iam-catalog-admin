@@ -3,7 +3,7 @@
 # controller) by setting ingress.gateway.name in values.yaml. Intended for CAT-6/CAT-7
 # (GET /api/v1/departments[/:id]) — the only routes read by authenticated tenant
 # callers rather than platform_operator tooling or mesh-internal /internal/* calls
-# (LLD §16.1). Operator and internal routes should stay reachable only inside the mesh.
+# (LLD §13.1). Operator and internal routes should stay reachable only inside the mesh.
 #
 # TLS termination is configured on the Gateway listener, not here.
 # For CORS and gateway-level rate limiting, enable ingress.securityPolicy.

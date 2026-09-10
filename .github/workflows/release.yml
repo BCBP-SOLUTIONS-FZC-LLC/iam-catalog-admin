@@ -227,7 +227,7 @@ jobs:
   # matches what was pushed, then checks the error rate for 2 minutes.
   # On failure, automatically rolls back and fails the release.
   # Requires: KUBECONFIG_B64 secret, K8S_NAMESPACE var (optional, defaults to
-  # 'default' — set to 'iam' to match this service's LLD §16.1 namespace),
+  # 'default' — set to 'iam' to match this service's LLD §13.1 namespace),
   # PROMETHEUS_URL var (optional). If KUBECONFIG_B64 is not configured this
   # job fails immediately — set it before tagging releases.
   deploy-gate:

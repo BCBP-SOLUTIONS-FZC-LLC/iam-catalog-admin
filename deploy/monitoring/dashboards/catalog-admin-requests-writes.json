@@ -3,13 +3,13 @@
     {
       "name": "DS_PROMETHEUS",
       "label": "Prometheus",
-      "description": "Prometheus datasource scraping iam-catalog-admin's /metrics port (LLD §13.2/§13.4).",
+      "description": "Prometheus datasource scraping iam-catalog-admin's /metrics port (LLD §11.2/§11.4).",
       "type": "datasource",
       "pluginId": "prometheus"
     }
   ],
   "title": "Catalog / Admin Config — Requests & Writes",
-  "description": "LLD §13.4's 'Requests & Writes' dashboard: request rate/latency for CAT-1 through CAT-I2 by route, cat:departments/cat:plans cache hit ratio, and optimistic-lock-conflict rate. Place in a 'Catalog / Admin Config' Grafana folder alongside the platform's existing 'IAM' folder. The other two panels §13.4 names — 'Consumer Health' (sourced from iam-org-membership's/iam-group-mapping's own metrics, not this service's) and 'Migration Soak' (retired — the Wave-1 routes it would watch no longer exist) — are out of this dashboard's scope; see §13.4 for why.",
+  "description": "LLD §11.4's 'Requests & Writes' dashboard: request rate/latency for CAT-1 through CAT-I2 by route, cat:departments/cat:plans cache hit ratio, and optimistic-lock-conflict rate. Place in a 'Catalog / Admin Config' Grafana folder alongside the platform's existing 'IAM' folder. The other two panels §11.4 names — 'Consumer Health' (sourced from iam-org-membership's/iam-group-mapping's own metrics, not this service's) and 'Migration Soak' (retired — the Wave-1 routes it would watch no longer exist) — are out of this dashboard's scope; see §11.4 for why.",
   "tags": ["iam", "catalog-admin"],
   "timezone": "utc",
   "schemaVersion": 39,
@@ -43,7 +43,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Request rate by route + status",
-      "description": "catalog_admin_requests_total (LLD §13.2) — every CAT-1 through CAT-I2 terminal outcome, exact status code.",
+      "description": "catalog_admin_requests_total (LLD §11.2) — every CAT-1 through CAT-I2 terminal outcome, exact status code.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": {
@@ -63,7 +63,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Request latency by route (p50/p90/p99)",
-      "description": "catalog_admin_request_duration_seconds (LLD §13.2) — a Summary, so quantiles are separate series with a quantile label already computed client-side; no histogram_quantile() needed. Feeds the §13.1 SLOs (40ms read / 100ms write p99).",
+      "description": "catalog_admin_request_duration_seconds_bucket (LLD §11.2) — a Histogram (CAT-D13), so p50/p90/p99 are computed here via histogram_quantile() over the rate-summed buckets, per route. Feeds the §11.1 SLOs (40ms read / 100ms write p99) and deploy/monitoring/slo-rules.yml burn-rate alerts.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "fieldConfig": {
@@ -73,9 +73,21 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "catalog_admin_request_duration_seconds{job=\"iam-catalog-admin\"}",
-          "legendFormat": "{{route}} p{{quantile}}",
+          "expr": "histogram_quantile(0.5, sum by (le, route) (rate(catalog_admin_request_duration_seconds_bucket{job=\"iam-catalog-admin\"}[5m])))",
+          "legendFormat": "{{route}} p50",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.9, sum by (le, route) (rate(catalog_admin_request_duration_seconds_bucket{job=\"iam-catalog-admin\"}[5m])))",
+          "legendFormat": "{{route}} p90",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.99, sum by (le, route) (rate(catalog_admin_request_duration_seconds_bucket{job=\"iam-catalog-admin\"}[5m])))",
+          "legendFormat": "{{route}} p99",
+          "refId": "C"
         }
       ]
     },
@@ -91,7 +103,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Cache hit ratio by key",
-      "description": "Derived from catalog_admin_cache_hits_total/catalog_admin_cache_misses_total (LLD §13.2) — a raw ratio gauge was deliberately not instrumented as a third, redundant series; this is the documented PromQL derivation from the two counters that already exist.",
+      "description": "Derived from catalog_admin_cache_hits_total/catalog_admin_cache_misses_total (LLD §11.2) — a raw ratio gauge was deliberately not instrumented as a third, redundant series; this is the documented PromQL derivation from the two counters that already exist.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
       "fieldConfig": {
@@ -150,7 +162,7 @@
       "id": 8,
       "type": "timeseries",
       "title": "Writes by table + op",
-      "description": "catalog_admin_writes_total (LLD §13.2) — departments/plans inserts and updates.",
+      "description": "catalog_admin_writes_total (LLD §11.2) — departments/plans inserts and updates.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
       "fieldConfig": {
@@ -170,7 +182,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "Optimistic-lock-conflict rate by table",
-      "description": "catalog_admin_optimistic_lock_conflicts_total (LLD §13.2) — feeds IAMCatalogAdminOptimisticLockConflicts (deploy/monitoring/app-alerts.yml): writes are rare enough that any sustained nonzero rate for >15m is itself diagnostic of a caller retry-storm or tooling bug.",
+      "description": "catalog_admin_optimistic_lock_conflicts_total (LLD §11.2) — feeds IAMCatalogAdminOptimisticLockConflicts (deploy/monitoring/app-alerts.yml): writes are rare enough that any sustained nonzero rate for >15m is itself diagnostic of a caller retry-storm or tooling bug.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
       "fieldConfig": {

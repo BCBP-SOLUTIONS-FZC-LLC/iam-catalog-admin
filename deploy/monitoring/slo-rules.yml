@@ -1,0 +1,219 @@
+# SLO recording + burn-rate alerts for iam-catalog-admin (LLD §11.1).
+#
+# Mirrors iam-org-membership's deploy/monitoring/slo-rules.yml pattern
+# (multi-window multi-burn-rate, SRE book Ch. 5), adapted to this service's
+# own §11.1 SLO table and its own catalog_admin_request_duration_seconds
+# Histogram (CAT-D13, §16 — converted from a Summary specifically so these
+# per-request good/bad-event ratios could be computed at all; a Summary's
+# client-side quantiles cannot answer "what fraction of requests were under
+# 40ms", only "what was the 99th percentile").
+#
+# Three SLOs are declared, grouped by route class exactly as §11.1's own
+# table groups them (the metric carries no HTTP-method label, so a route
+# that serves more than one method — GET/PATCH /api/v1/operator/plans/:code,
+# CAT-4/CAT-5 — is fine to leave ungrouped-by-method here precisely because
+# §11.1 already gives both methods the *same* 100ms target; no route in
+# this service mixes two methods with two different targets):
+#
+#  SLO-1  Public department read latency (CAT-6, CAT-7)
+#         Target: 99% of /api/v1/departments* requests complete within
+#         40 ms (§11.1's cache-miss figure — the metric has no cache
+#         hit/miss label, so the tighter 15 ms cache-hit figure is not
+#         separately tracked here; the looser of the two bounds is used).
+#
+#  SLO-2  Internal bulk-read latency (CAT-I1, CAT-I2)
+#         Target: 99% of /api/v1/internal/* requests complete within 30 ms.
+#
+#  SLO-3  Operator route latency (CAT-1, CAT-2, CAT-4, CAT-5)
+#         Target: 99% of /api/v1/operator/* requests — department writes
+#         and plan reads/writes alike — complete within 100 ms, matching
+#         §11.1's own single row for this whole route group.
+#
+# Recording rules pre-compute the SLI numerator/denominator so alert rules
+# can key off a scalar. Alerts follow the multi-window multi-burn-rate
+# pattern: a slow burn signals an ongoing degradation (ticket-worthy), a
+# fast burn signals an acute regression worth paging on — using this
+# service's own severity vocabulary (critical/warning, §11.5) rather than
+# org-membership's page/ticket labels, for consistency with
+# deploy/monitoring/app-alerts.yml's existing alerts.
+
+groups:
+  # ── SLI recording ───────────────────────────────────────────────────────
+  - name: iam-catalog-admin.slo.records
+    interval: 30s
+    rules:
+      # SLO-1: public department reads (CAT-6/CAT-7), 40ms threshold.
+      - record: catalog_admin:slo1_public_read_latency_sli:ratio_rate_5m
+        expr: |
+          sum(rate(catalog_admin_request_duration_seconds_bucket{
+            job="iam-catalog-admin",
+            route=~"/api/v1/departments.*",
+            le="0.04"
+          }[5m]))
+          /
+          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+            job="iam-catalog-admin",
+            route=~"/api/v1/departments.*"
+          }[5m])), 0.001)
+
+      - record: catalog_admin:slo1_public_read_latency_sli:ratio_rate_1h
+        expr: |
+          sum(rate(catalog_admin_request_duration_seconds_bucket{
+            job="iam-catalog-admin",
+            route=~"/api/v1/departments.*",
+            le="0.04"
+          }[1h]))
+          /
+          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+            job="iam-catalog-admin",
+            route=~"/api/v1/departments.*"
+          }[1h])), 0.001)
+
+      # SLO-2: internal bulk reads (CAT-I1/CAT-I2), 30ms threshold.
+      - record: catalog_admin:slo2_internal_latency_sli:ratio_rate_5m
+        expr: |
+          sum(rate(catalog_admin_request_duration_seconds_bucket{
+            job="iam-catalog-admin",
+            route=~"/api/v1/internal/.*",
+            le="0.03"
+          }[5m]))
+          /
+          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+            job="iam-catalog-admin",
+            route=~"/api/v1/internal/.*"
+          }[5m])), 0.001)
+
+      - record: catalog_admin:slo2_internal_latency_sli:ratio_rate_1h
+        expr: |
+          sum(rate(catalog_admin_request_duration_seconds_bucket{
+            job="iam-catalog-admin",
+            route=~"/api/v1/internal/.*",
+            le="0.03"
+          }[1h]))
+          /
+          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+            job="iam-catalog-admin",
+            route=~"/api/v1/internal/.*"
+          }[1h])), 0.001)
+
+      # SLO-3: operator routes (CAT-1/CAT-2/CAT-4/CAT-5), 100ms threshold.
+      - record: catalog_admin:slo3_operator_latency_sli:ratio_rate_5m
+        expr: |
+          sum(rate(catalog_admin_request_duration_seconds_bucket{
+            job="iam-catalog-admin",
+            route=~"/api/v1/operator/.*",
+            le="0.1"
+          }[5m]))
+          /
+          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+            job="iam-catalog-admin",
+            route=~"/api/v1/operator/.*"
+          }[5m])), 0.001)
+
+      - record: catalog_admin:slo3_operator_latency_sli:ratio_rate_1h
+        expr: |
+          sum(rate(catalog_admin_request_duration_seconds_bucket{
+            job="iam-catalog-admin",
+            route=~"/api/v1/operator/.*",
+            le="0.1"
+          }[1h]))
+          /
+          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+            job="iam-catalog-admin",
+            route=~"/api/v1/operator/.*"
+          }[1h])), 0.001)
+
+  # ── SLO burn-rate alerts (multi-window) ─────────────────────────────────
+  - name: iam-catalog-admin.slo.burn
+    interval: 1m
+    rules:
+      # SLO-1: fast burn (14.4x the 1% error budget in 5m+1h → page).
+      - alert: IAMCatalogAdminSLO1PublicReadLatencyFastBurn
+        expr: |
+          (1 - catalog_admin:slo1_public_read_latency_sli:ratio_rate_5m) > (14.4 * (1 - 0.99))
+          and
+          (1 - catalog_admin:slo1_public_read_latency_sli:ratio_rate_1h) > (14.4 * (1 - 0.99))
+        for: 2m
+        labels:
+          severity: critical
+          slo: SLO-1
+          team: platform
+        annotations:
+          summary: "SLO-1 fast-burn: CAT-6/CAT-7 department read latency degraded"
+          description: >-
+            {{ $value | humanizePercentage }} of /api/v1/departments*
+            requests are missing the 40ms target over the last 5m+1h
+            windows. Check the cat:departments cache-hit ratio panel before
+            assuming Postgres is the bottleneck.
+
+      # SLO-1: slow burn (ticket-worthy).
+      - alert: IAMCatalogAdminSLO1PublicReadLatencySlowBurn
+        expr: (1 - catalog_admin:slo1_public_read_latency_sli:ratio_rate_1h) > (6 * (1 - 0.99))
+        for: 15m
+        labels:
+          severity: warning
+          slo: SLO-1
+          team: platform
+        annotations:
+          summary: "SLO-1 slow-burn: department read latency below target for 15m+"
+
+      # SLO-2: fast burn.
+      - alert: IAMCatalogAdminSLO2InternalLatencyFastBurn
+        expr: |
+          (1 - catalog_admin:slo2_internal_latency_sli:ratio_rate_5m) > (14.4 * (1 - 0.99))
+          and
+          (1 - catalog_admin:slo2_internal_latency_sli:ratio_rate_1h) > (14.4 * (1 - 0.99))
+        for: 2m
+        labels:
+          severity: critical
+          slo: SLO-2
+          team: platform
+        annotations:
+          summary: "SLO-2 fast-burn: CAT-I1/CAT-I2 internal latency degraded"
+          description: >-
+            {{ $value | humanizePercentage }} of /api/v1/internal/* requests
+            are missing the 30ms target over the last 5m+1h windows. Every
+            consumer's cache-population path (Core, Group Mapping) is
+            degraded simultaneously.
+
+      # SLO-2: slow burn.
+      - alert: IAMCatalogAdminSLO2InternalLatencySlowBurn
+        expr: (1 - catalog_admin:slo2_internal_latency_sli:ratio_rate_1h) > (6 * (1 - 0.99))
+        for: 15m
+        labels:
+          severity: warning
+          slo: SLO-2
+          team: platform
+        annotations:
+          summary: "SLO-2 slow-burn: internal bulk-read latency below target for 15m+"
+
+      # SLO-3: fast burn.
+      - alert: IAMCatalogAdminSLO3OperatorLatencyFastBurn
+        expr: |
+          (1 - catalog_admin:slo3_operator_latency_sli:ratio_rate_5m) > (14.4 * (1 - 0.99))
+          and
+          (1 - catalog_admin:slo3_operator_latency_sli:ratio_rate_1h) > (14.4 * (1 - 0.99))
+        for: 2m
+        labels:
+          severity: warning
+          slo: SLO-3
+          team: platform
+        annotations:
+          summary: "SLO-3 fast-burn: operator route latency degraded"
+          description: >-
+            {{ $value | humanizePercentage }} of /api/v1/operator/* requests
+            (department writes, plan reads/writes) are missing the 100ms
+            target over the last 5m+1h windows. Writes are rare by design
+            (§2) — check for a retry storm or Postgres contention before
+            assuming steady-state load.
+
+      # SLO-3: slow burn.
+      - alert: IAMCatalogAdminSLO3OperatorLatencySlowBurn
+        expr: (1 - catalog_admin:slo3_operator_latency_sli:ratio_rate_1h) > (6 * (1 - 0.99))
+        for: 15m
+        labels:
+          severity: warning
+          slo: SLO-3
+          team: platform
+        annotations:
+          summary: "SLO-3 slow-burn: operator route latency below target for 15m+"

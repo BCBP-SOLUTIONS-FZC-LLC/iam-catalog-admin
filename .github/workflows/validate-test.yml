@@ -1,10 +1,12 @@
 # Reusable workflow — test gate.
-# Race detector (unit · postgres · e2e) + coverage + architecture lint.
-# Called by ci.yml and release.yml. Gates trivy and smoke.
+# Race detector (unit · postgres · e2e) + coverage + architecture lint + Swagger
+# staleness check. Called by ci.yml and release.yml. Gates trivy and smoke.
 #
-# Trimmed from iam-user-profile's validate-test.yml: no Swagger staleness
-# check (this service has no Swagger setup), no event-schema sync check (no
-# API/eventschema — this service publishes no events, LLD §10).
+# Trimmed from iam-org-membership's/iam-user-profile's validate-test.yml: no
+# event-schema sync check (no api/asyncapi.yaml, no internal/adapter/outbound/eventbus/
+# — this service publishes no events, LLD §7/CAT-EVT-1..5). The Swagger
+# staleness check IS kept — this service ships docs/swagger/ (make swag /
+# make swag-check) just like iam-org-membership does.
 name: Validate / Test
 
 "on":
@@ -104,3 +106,12 @@ jobs:
 
       - name: Architecture lint
         run: bash .github/scripts/arch-lint.sh
+
+      # Regenerates Swagger docs from handler annotations and fails if the
+      # committed artefacts (docs/swagger/) are stale. `make swag`/`make
+      # swag-check` were previously documented (CLAUDE.md, Makefile) as a
+      # "CI drift gate" but no workflow actually invoked
+      # check-swagger-stale.sh — closing that gap here, matching
+      # iam-org-membership's equivalent step.
+      - name: Swagger staleness check
+        run: bash .github/scripts/check-swagger-stale.sh

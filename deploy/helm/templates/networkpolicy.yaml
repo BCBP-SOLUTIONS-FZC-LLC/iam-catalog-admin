@@ -32,7 +32,7 @@ spec:
           protocol: TCP
 
     # Allow internal service-to-service traffic within the same namespace
-    # (CAT-I1/CAT-I2, mesh-only — LLD §7, §9).
+    # (CAT-I1/CAT-I2, mesh-only — LLD §5, §10).
     - from:
         - podSelector: {}
       ports:
@@ -68,7 +68,7 @@ spec:
           protocol: TCP
 
     # Allow PostgreSQL / PgBouncer connections — this service's only
-    # required dependency besides Valkey (LLD §4's leaf-service property:
+    # required dependency besides Valkey (LLD §3's leaf-service property:
     # no outbound calls to any other IAM service, no AWS SDK usage).
     - ports:
         - port: 5432
