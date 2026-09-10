@@ -3,15 +3,18 @@ package http
 import (
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsDBUnavailableSQLState(t *testing.T) {
-	assert.True(t, isDBUnavailableSQLState("08006"))
-	assert.True(t, isDBUnavailableSQLState("53300"))
-	assert.True(t, isDBUnavailableSQLState("57014"))
-	assert.True(t, isDBUnavailableSQLState("58030"))
-	assert.False(t, isDBUnavailableSQLState("23505"))
-	assert.False(t, isDBUnavailableSQLState(""))
-	assert.False(t, isDBUnavailableSQLState("4"))
+func TestIsOperatorOrSystemErrorSQLState(t *testing.T) {
+	assert.True(t, isOperatorOrSystemErrorSQLState(&pgconn.PgError{Code: "57014"}))
+	assert.True(t, isOperatorOrSystemErrorSQLState(&pgconn.PgError{Code: "57P01"}))
+	assert.True(t, isOperatorOrSystemErrorSQLState(&pgconn.PgError{Code: "58030"}))
+	assert.False(t, isOperatorOrSystemErrorSQLState(&pgconn.PgError{Code: "08006"}),
+		"class 08 is covered by pgcommon.IsConnectionException, not this helper")
+	assert.False(t, isOperatorOrSystemErrorSQLState(&pgconn.PgError{Code: "53300"}),
+		"class 53 is covered by pgcommon.IsInsufficientResources, not this helper")
+	assert.False(t, isOperatorOrSystemErrorSQLState(&pgconn.PgError{Code: "23505"}))
+	assert.False(t, isOperatorOrSystemErrorSQLState(nil))
 }

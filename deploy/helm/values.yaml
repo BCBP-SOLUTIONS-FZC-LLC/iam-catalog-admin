@@ -1,9 +1,9 @@
 # Default values for iam-catalog-admin.
 # Ported from iam-user-profile's deploy/helm chart, pruned to what this
-# service actually needs (LLD §15/§16): no outbox/SNS/SQS/S3/Glue, no
+# service actually needs (LLD §12/§13): no outbox/SNS/SQS/S3/Glue, no
 # RLS/GUC, no reconciler CronJob, no per-tenant state. Runs in the `iam`
 # namespace at 2 replicas per the LLD's own "sufficient for MVP load"
-# judgment (§16.1, tracked as CAT-Q5).
+# judgment (§13.1, tracked as CAT-Q5).
 
 replicaCount: 2
 
@@ -13,11 +13,18 @@ image:
   # Overridden by CI to the release tag; falls back to Chart.AppVersion.
   tag: ""
 
+# GHCR images under this org are private — set this to a docker-registry
+# Secret name (e.g. a regcred created from a PAT/GITHUB_TOKEN with
+# read:packages) if the cluster's default pull credentials don't cover it.
+imagePullSecrets: []
+
 serviceAccount:
   create: true
+  # Leave empty to default to the release's fullname.
+  name: ""
   annotations: {}
   # No IRSA role needed — this service has no AWS SDK dependency (no S3,
-  # SNS, SQS, or Glue; LLD §15's "no third-party credential to rotate").
+  # SNS, SQS, or Glue; LLD §12's "no third-party credential to rotate").
 
 service:
   type: ClusterIP
@@ -50,9 +57,9 @@ env:
   APP_PORT: "8081"
   METRICS_PORT: "9090"
   APP_NAME: catalog-admin-config
-  CATALOG_TTL_SECONDS: "60" # LLD §15/§8 — cat:departments/cat:plans TTL
+  CATALOG_TTL_SECONDS: "60" # LLD §12/§6 — cat:departments/cat:plans TTL
   PG_SSLMODE: require
-  PG_MAX_CONNS: "10" # LLD §15 — "sized for a read-heavy, write-rare workload"
+  PG_MAX_CONNS: "10" # LLD §12 — "sized for a read-heavy, write-rare workload"
   # PG_MIN_CONNS intentionally omitted: pgcommon.ConfigFromEnv's own
   # validation (platform-pgcommon v1.1.1+) rejects "0" as an invalid,
   # non-positive value and falls back to its documented default of 2,
@@ -68,7 +75,7 @@ env:
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
 
 # Secret-backed env vars (rendered into a Secret unless existingSecret is
-# set). LLD §15: "no third-party credential to rotate... managed via the
+# set). LLD §12: "no third-party credential to rotate... managed via the
 # platform's existing External Secrets Operator convention" — this chart's
 # Secret template is the fallback for environments not yet wired to ESO.
 envFromSecret:
@@ -92,12 +99,33 @@ secretValues:
   VALKEY_URL: ""
 
 # 30s HTTP drain (main.go's shutdown timeout) + 15s buffer. No outbox/SQS
-# consumer to drain — this service has neither (LLD §10, CAT-EVT-1/2).
+# consumer to drain — this service has neither (LLD §7, CAT-EVT-1/2).
 terminationGracePeriodSeconds: 45
 
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532 # distroless nonroot UID
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
 
 startupProbe:
   path: /healthz
@@ -141,7 +169,7 @@ serviceMonitor:
   namespaceSelector: {}
 
 # CAT-6/CAT-7 (GET /api/v1/departments[/:id]) are read by authenticated
-# tenant callers, not only platform_operator tooling (LLD §16.1) — enable
+# tenant callers, not only platform_operator tooling (LLD §13.1) — enable
 # this when those routes need to be reachable through the gateway.
 # platform_operator (/api/v1/operator/*) and iam-system (/api/v1/internal/*)
 # routes should stay mesh-only regardless.

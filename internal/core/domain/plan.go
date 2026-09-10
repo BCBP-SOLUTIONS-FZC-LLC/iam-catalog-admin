@@ -2,10 +2,10 @@ package domain
 
 import "time"
 
-// TenantPlan mirrors the tenant_plan enum in this service's DB (LLD §5.2).
+// TenantPlan mirrors the tenant_plan enum in this service's DB (LLD §4.2).
 // Core (iam-org-membership) keeps its own local copy of this same enum on
 // tenants.plan — a Postgres ENUM type cannot be shared across databases
-// (LLD §5.2) — so referential integrity there is an app-level check, not a
+// (LLD §4.2) — so referential integrity there is an app-level check, not a
 // cross-database FK.
 type TenantPlan string
 
@@ -15,7 +15,7 @@ const (
 	PlanEnterprise TenantPlan = "enterprise"
 )
 
-// BrandingLevel mirrors the branding_level enum (LLD §5.2).
+// BrandingLevel mirrors the branding_level enum (LLD §4.2).
 type BrandingLevel string
 
 const (
@@ -23,12 +23,12 @@ const (
 	BrandingLogo BrandingLevel = "logo"
 )
 
-// Plan is the global operator entitlement catalog row (LLD §5.2). PK is the
+// Plan is the global operator entitlement catalog row (LLD §4.2). PK is the
 // code. Operator PATCH-only (CAT-5) — the tier set is fixed to the ENUM, no
 // create/delete API (PLAN-4).
 //
 // WorkflowTemplateLimit / TenderLimit are nil pointers meaning "unlimited"
-// (LLD §5.2/CAT-D6 — nullable-limit representation over a -1 sentinel).
+// (LLD §4.2/CAT-D6 — nullable-limit representation over a -1 sentinel).
 // NULL in the DB, unset/null in JSON.
 type Plan struct {
 	Code                  TenantPlan
@@ -40,7 +40,7 @@ type Plan struct {
 	CustomBranding        BrandingLevel
 	// FeatureSet is the baseline entitlement flags. Effective per-tenant
 	// value = FeatureSet ⊕ Core's tenants.feature_flags override delta
-	// (PLAN-6, computed exclusively in Core at I-8 read time — LLD §5.3).
+	// (PLAN-6, computed exclusively in Core at I-8 read time — LLD §4.6).
 	// This service owns the left operand only.
 	FeatureSet    map[string]any
 	RecordVersion int64

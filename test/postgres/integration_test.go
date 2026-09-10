@@ -16,9 +16,9 @@ import (
 
 	pgadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/postgres"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/test/dbseed"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -29,10 +29,11 @@ import (
 // service's migrations against it, and returns:
 //
 //	pool    — pgcommon.Pool, used to construct the real repositories.
-//	rawPool — a plain pgxpool.Pool for one-off raw SQL (trigger
-//	          assertions) that has no repository method of its own —
-//	          mirrors iam-org-membership's test/postgres rawPool convention.
-func setupTestDB(t *testing.T) (*pgcommon.Pool, *pgxpool.Pool) {
+//	rawPool — dbseed.Pool (pgcommon underneath) for one-off raw SQL
+//	          (trigger assertions) that has no repository method of its
+//	          own — mirrors iam-org-membership / iam-realm-provisioner's
+//	          test/dbseed convention. Tests never open a raw pgxpool.
+func setupTestDB(t *testing.T) (*pgcommon.Pool, *dbseed.Pool) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -56,11 +57,28 @@ func setupTestDB(t *testing.T) (*pgcommon.Pool, *pgxpool.Pool) {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	rawPool, err := pgxpool.New(ctx, dsn)
+	rawPool, err := dbseed.New(ctx, dsn)
 	require.NoError(t, err)
 	t.Cleanup(rawPool.Close)
 
 	return pool, rawPool
+}
+
+// findDeptByCode looks up a seeded department by its code via List — the
+// repository has no exported FindByCode of its own (removed as dead code:
+// no CAT endpoint looks up a department by code, only by ID, LLD §5.3).
+// Test-only convenience for fetching a known seed row's ID/RecordVersion.
+func findDeptByCode(t *testing.T, ctx context.Context, repo *pgadapter.DepartmentRepository, code string) domain.Department {
+	t.Helper()
+	all, err := repo.List(ctx, false)
+	require.NoError(t, err)
+	for _, d := range all {
+		if d.Code == code {
+			return d
+		}
+	}
+	t.Fatalf("seeded department with code %q not found", code)
+	return domain.Department{}
 }
 
 func TestDepartmentRepository_CreatePatchLifecycle(t *testing.T) {
@@ -112,12 +130,11 @@ func TestDepartmentRepository_SystemDepartmentCannotBeRetired(t *testing.T) {
 	repo := pgadapter.NewDepartmentRepository(pool)
 	ctx := context.Background()
 
-	eng, err := repo.FindByCode(ctx, "ENGINEERING")
-	require.NoError(t, err)
+	eng := findDeptByCode(t, ctx, repo, "ENGINEERING")
 	require.True(t, eng.IsSystem)
 
 	inactive := false
-	_, err = repo.Update(ctx, eng.ID, nil, &inactive, eng.RecordVersion)
+	_, err := repo.Update(ctx, eng.ID, nil, &inactive, eng.RecordVersion)
 	require.Error(t, err, "chk_system_department_active must block retiring a system department")
 }
 
@@ -145,17 +162,6 @@ func TestDepartmentRepository_FindByID_NotFound(t *testing.T) {
 	require.Equal(t, domain.ErrDepartmentNotFound.Error(), de.Code)
 }
 
-func TestDepartmentRepository_FindByCode_NotFound(t *testing.T) {
-	t.Parallel()
-	pool, _ := setupTestDB(t)
-	repo := pgadapter.NewDepartmentRepository(pool)
-	_, err := repo.FindByCode(context.Background(), "NONEXISTENT")
-	require.Error(t, err)
-	var de *domain.DomainError
-	require.ErrorAs(t, err, &de)
-	require.Equal(t, domain.ErrDepartmentNotFound.Error(), de.Code)
-}
-
 func TestDepartmentRepository_Insert_NonUniqueCheckViolationPassesThrough(t *testing.T) {
 	t.Parallel()
 	pool, _ := setupTestDB(t)
@@ -176,8 +182,7 @@ func TestDepartmentRepository_Update_NoFieldsDelegatesToFindByID(t *testing.T) {
 	repo := pgadapter.NewDepartmentRepository(pool)
 	ctx := context.Background()
 
-	eng, err := repo.FindByCode(ctx, "ENGINEERING")
-	require.NoError(t, err)
+	eng := findDeptByCode(t, ctx, repo, "ENGINEERING")
 
 	got, err := repo.Update(ctx, eng.ID, nil, nil, eng.RecordVersion)
 	require.NoError(t, err)

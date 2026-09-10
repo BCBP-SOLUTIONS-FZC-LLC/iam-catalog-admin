@@ -95,7 +95,7 @@ func TestResponseFormat_OCC409_SurfacesVersionInfo(t *testing.T) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// No-event audit — catalog-admin has no outbox (LLD §10)
+// No-event audit — catalog-admin has no outbox (LLD §7)
 // ═════════════════════════════════════════════════════════════════════════
 
 // Scenario CA-NOEVT-01: outbox_events table does not exist in this service's schema
@@ -107,7 +107,7 @@ func TestNoEvents_OutboxTable_DoesNotExist(t *testing.T) {
 		`SELECT EXISTS(SELECT 1 FROM information_schema.tables
          WHERE table_schema='public' AND table_name='outbox_events')`).Scan(&exists)
 	require.NoError(t, err)
-	assert.False(t, exists, "catalog-admin must have no outbox_events table (LLD §10 CAT-EVT-1..5)")
+	assert.False(t, exists, "catalog-admin must have no outbox_events table (LLD §7 CAT-EVT-1..5)")
 }
 
 // Scenario CA-NOEVT-02: no outbox rows after department patch

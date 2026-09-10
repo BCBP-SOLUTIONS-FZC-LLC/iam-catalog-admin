@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,6 +41,10 @@ func (r *mockRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *mockRows) Values() ([]any, error)                       { return nil, nil }
 func (r *mockRows) RawValues() [][]byte                          { return nil }
 func (r *mockRows) Conn() *pgx.Conn                              { return nil }
+
+// TypeMap satisfies pgx.Rows (added in pgx v5.11.0). Scan above is a fixed
+// sentinel-error stub that never touches it, so a fresh map is sufficient.
+func (r *mockRows) TypeMap() *pgtype.Map { return pgtype.NewMap() }
 func (r *mockRows) Next() bool {
 	if !r.called {
 		r.called = true
@@ -159,15 +164,6 @@ func TestDeptListFromTx_ScanError(t *testing.T) {
 func TestDeptFindByIDFromTx_NonErrNoRowsScanError(t *testing.T) {
 	tx := &mockTxWithQueryRow{rows: []pgx.Row{mockRow{err: errScan}}}
 	_, err := deptFindByIDFromTx(context.Background(), tx, uuid.New())
-	require.Error(t, err)
-	assert.Equal(t, errScan, err)
-}
-
-// TestDeptFindByCodeFromTx_NonErrNoRowsScanError covers the `return nil, err`
-// branch in deptFindByCodeFromTx when the scan error is not pgx.ErrNoRows.
-func TestDeptFindByCodeFromTx_NonErrNoRowsScanError(t *testing.T) {
-	tx := &mockTxWithQueryRow{rows: []pgx.Row{mockRow{err: errScan}}}
-	_, err := deptFindByCodeFromTx(context.Background(), tx, "CODE")
 	require.Error(t, err)
 	assert.Equal(t, errScan, err)
 }

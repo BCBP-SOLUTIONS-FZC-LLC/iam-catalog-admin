@@ -42,15 +42,6 @@ func (f *fakeDepartmentRepo) FindByID(_ context.Context, id uuid.UUID) (*domain.
 	return &d, nil
 }
 
-func (f *fakeDepartmentRepo) FindByCode(_ context.Context, code string) (*domain.Department, error) {
-	for _, d := range f.rows {
-		if d.Code == code {
-			return &d, nil
-		}
-	}
-	return nil, domain.NewError(domain.ErrDepartmentNotFound, "department not found")
-}
-
 func (f *fakeDepartmentRepo) Insert(_ context.Context, d *domain.Department) (*domain.Department, error) {
 	for _, existing := range f.rows {
 		if existing.Code == d.Code {

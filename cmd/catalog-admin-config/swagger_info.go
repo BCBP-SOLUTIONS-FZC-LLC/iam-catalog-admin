@@ -16,7 +16,7 @@
 // @version         1.0
 // @description     Authoritative system of record for the platform's two global, non-tenant-scoped reference catalogs — the department catalog and the plan entitlement catalog. Extracted from Org & Membership (`iam-org-membership`) per ADR-0007 Wave 1.
 // @description
-// @description     **No tenant scope.** Neither departments nor plans carries a tenant_id — this service has no RLS/tenant-context GUC (LLD §9). It is a pure leaf: no outbound synchronous calls to any other IAM service, no outbox/SNS/SQS (LLD §10, CAT-EVT-1/2).
+// @description     **No tenant scope.** Neither departments nor plans carries a tenant_id — this service has no RLS/tenant-context GUC (LLD §10). It is a pure leaf: no outbound synchronous calls to any other IAM service, no outbox/SNS/SQS (LLD §7, CAT-EVT-1/2).
 // @description
 // @description     **Route prefixes.**  `/api/v1/departments` — any authenticated caller (JWT via gateway), read-only.  `/api/v1/operator/*` — platform operators (`platform_operator` role): the only writers for departments, and both reads and writes for plans (no public plan-read route).  `/api/v1/internal/*` — in-mesh services (mTLS, `iam-system` role), bulk catalog reads for other IAM services' caches.
 // @description

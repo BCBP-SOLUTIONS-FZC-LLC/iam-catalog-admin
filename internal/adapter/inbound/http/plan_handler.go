@@ -124,7 +124,7 @@ func (h *PlanHandler) Patch(c *gin.Context) {
 	}
 	// parseLimit distinguishes absent (nil RawMessage) from explicit null
 	// from a value — drives the **int double-pointer in PlanPatch (LLD
-	// §5.2/CAT-D6):
+	// §4.2/CAT-D6):
 	//   nil **int        = field absent → no SET clause in UPDATE
 	//   **int → nil *int = explicit null → NULL in DB (unlimited)
 	//   **int → *int → n = explicit value → cap n in DB

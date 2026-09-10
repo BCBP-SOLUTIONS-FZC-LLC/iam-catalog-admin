@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant Core as Core Org & Membership /<br/>Group Mapping Service
+    participant MW as Middleware chain
+    participant H as InternalHandler
+    participant S as DepartmentService
+    participant C as Valkey (cat:departments)
+    participant DB as Postgres
+
+    Note over Core,MW: CAT-I1 = GET /api/v1/internal/departments<br/>Consumed on every om:departments/gm:departments cache miss (600s TTL) — ≤30ms p99 (LLD §5.4/§11.1)
+
+    Core->>+MW: GET /api/v1/internal/departments (mTLS, mesh-internal)
+    MW->>MW: ProtectedMiddlewares (identity headers)
+    MW->>MW: IdentityBridgeMiddleware (parse role)
+    MW->>MW: RequireSystemRole (iam-system?)
+    MW->>+H: c *gin.Context
+    H->>H: requireSystem(c) — defense-in-depth re-check
+    H->>+S: List(ctx)
+    S->>+C: GET cat:departments
+    alt cache hit (steady state)
+        C-->>-S: cached catalog
+    else cache miss or Valkey timeout/outage
+        C-->>S: miss (advisory — CAT-FAIL-1, never an error)
+        S->>+DB: SELECT * FROM departments ORDER BY code
+        DB-->>-S: rows
+        S->>C: SET cat:departments (60s TTL)
+    end
+    S-->>-H: full catalog
+    H-->>-MW: 200 { departments[], as_of }
+    MW-->>-Core: response
+
+    Note over Core: On failure or empty response, Core/Group Mapping serve their own<br/>om:departments:stale / gm:departments:stale (24h TTL) rather than hard-failing (CAT-D4)

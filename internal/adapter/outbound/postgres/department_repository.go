@@ -87,28 +87,6 @@ func deptFindByIDFromTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*domain.D
 	return d, nil
 }
 
-func (r *DepartmentRepository) FindByCode(ctx context.Context, code string) (*domain.Department, error) {
-	var out *domain.Department
-	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		var e error
-		out, e = deptFindByCodeFromTx(ctx, tx, code)
-		return e
-	})
-	return out, err
-}
-
-func deptFindByCodeFromTx(ctx context.Context, tx pgx.Tx, code string) (*domain.Department, error) {
-	row := tx.QueryRow(ctx, `SELECT `+departmentSelectColumns+` FROM departments WHERE code = $1`, code)
-	d, err := scanDepartment(row)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.NewError(domain.ErrDepartmentNotFound, "department not found")
-		}
-		return nil, err
-	}
-	return d, nil
-}
-
 func (r *DepartmentRepository) Insert(ctx context.Context, d *domain.Department) (*domain.Department, error) {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
@@ -157,22 +135,10 @@ func (r *DepartmentRepository) Update(ctx context.Context, id uuid.UUID, name *s
 
 	var out *domain.Department
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, sql, args...)
-		updated, err := scanDepartment(row)
+		updated, err := deptUpdateFromTx(ctx, tx, id, sql, args)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				var currentVersion int64
-				probe := tx.QueryRow(ctx, `SELECT record_version FROM departments WHERE id = $1`, id)
-				if perr := probe.Scan(&currentVersion); perr != nil {
-					if errors.Is(perr, pgx.ErrNoRows) {
-						return domain.NewError(domain.ErrDepartmentNotFound, "department not found")
-					}
-					return perr
-				}
+			if errors.Is(err, domain.ErrOptimisticLockConflict) {
 				catmetrics.OptimisticLockConflicts.WithLabelValues("departments").Inc()
-				return domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").WithDetails(map[string]any{
-					"record_version": currentVersion,
-				})
 			}
 			return err
 		}
@@ -183,6 +149,10 @@ func (r *DepartmentRepository) Update(ctx context.Context, id uuid.UUID, name *s
 	return out, err
 }
 
+// deptUpdateFromTx is Update's own transaction body, factored out so the
+// white-box test suite exercises the exact code path Update runs (previously
+// this logic was duplicated inline in Update while this function sat unused
+// — the tested path and the shipped path had silently diverged).
 func deptUpdateFromTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, sql string, args []any) (*domain.Department, error) {
 	row := tx.QueryRow(ctx, sql, args...)
 	updated, err := scanDepartment(row)

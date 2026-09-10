@@ -14,7 +14,7 @@
 //   - Every handler, every route, every middleware — same wiring as
 //     cmd/catalog-admin-config/main.go
 //   - miniredis stands in for Valkey (same wire protocol, real TCP server)
-//   - No outbox runner, no SNS/SQS — this service has neither (LLD §10)
+//   - No outbox runner, no SNS/SQS — this service has neither (LLD §7)
 //
 // Requires Docker on the runner. Tag: e2e.
 package e2e_test
@@ -28,7 +28,6 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -40,6 +39,7 @@ import (
 	pgadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/postgres"
 	valkeyadapter "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/adapter/outbound/valkey"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/service"
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/test/dbseed"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/gincommon"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
 )
@@ -56,7 +56,7 @@ func (f pingerFunc) Health(ctx context.Context) error { return f(ctx) }
 type e2eEnv struct {
 	ctx        context.Context
 	pool       *pgcommon.Pool
-	rawPool    *pgxpool.Pool
+	rawPool    *dbseed.Pool
 	cache      *valkeyadapter.Cache
 	server     *httptest.Server
 	baseURL    string
@@ -93,9 +93,16 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 
 	// Router — same NewRouter cmd/catalog-admin-config/main.go calls, so
 	// this harness can never drift from the production route table
-	// (LLD §6/§7/§9).
+	// (LLD §5, §10).
 	gin.SetMode(gin.TestMode)
 	cfg := gincommon.Config{ServiceName: "iam-catalog-admin-e2e"}
+	// Prime gincommon's metrics-init API the same way main.go does, before
+	// Register, so catalog_admin_* collectors land on MetricsRegisterer
+	// with matching {service, version} labels. NewRouter re-applies the
+	// same middleware slice; metrics.Init is sync.Once.
+	_ = gincommon.ObservabilityMiddlewares(cfg)
+	catmetrics.Register(gincommon.MetricsRegisterer(), gincommon.MetricsConstLabels())
+
 	router := httpadapter.NewRouter(httpadapter.RouterConfig{
 		GinConfig: cfg,
 
@@ -115,12 +122,6 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	server := httptest.NewServer(router.Handler())
 	t.Cleanup(server.Close)
 
-	// catalog_admin_* business metrics (LLD §13.2) — registered the same way
-	// main.go does, after NewRouter (which is what populates gincommon's
-	// registerer/const-labels). Register is idempotent (sync.Once): only the
-	// first test in this binary actually registers; later tests reuse it.
-	catmetrics.Register(gincommon.MetricsRegisterer(), gincommon.MetricsConstLabels())
-
 	// A separate metrics-only server, mirroring main.go's dedicated
 	// METRICS_PORT listener (router.Handler() deliberately has no /metrics
 	// route of its own — see router.go's registerInfraRoutes).
@@ -137,9 +138,10 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 
 // setupE2EDB spins up a Postgres testcontainer, runs the service's own
 // migrations against it (the same RunMigrations cmd/catalog-admin-config
-// calls at startup), and returns a pgcommon.Pool + a raw pgxpool for
-// direct-SQL assertions.
-func setupE2EDB(t *testing.T, ctx context.Context) (*pgcommon.Pool, *pgxpool.Pool) {
+// calls at startup), and returns a pgcommon.Pool + a dbseed.Pool for
+// direct-SQL assertions. dbseed wraps pgcommon so tests never open a
+// raw pgxpool — matching iam-org-membership / iam-realm-provisioner.
+func setupE2EDB(t *testing.T, ctx context.Context) (*pgcommon.Pool, *dbseed.Pool) {
 	t.Helper()
 
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
@@ -158,11 +160,15 @@ func setupE2EDB(t *testing.T, ctx context.Context) (*pgcommon.Pool, *pgxpool.Poo
 
 	require.NoError(t, pgadapter.RunMigrations(ctx, dsn, nil))
 
-	pool, err := pgcommon.NewPool(ctx, pgcommon.Config{DSN: dsn, MaxConns: 10})
+	pool, err := pgcommon.NewPool(ctx, pgcommon.Config{
+		DSN:      dsn,
+		MaxConns: 10,
+		Tracer:   pgadapter.NewOTelTracer("iam-catalog-admin-e2e"),
+	})
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	rawPool, err := pgxpool.New(ctx, dsn)
+	rawPool, err := dbseed.New(ctx, dsn)
 	require.NoError(t, err)
 	t.Cleanup(rawPool.Close)
 

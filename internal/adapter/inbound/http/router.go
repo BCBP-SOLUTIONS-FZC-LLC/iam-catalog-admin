@@ -7,14 +7,15 @@
 // duplicate (missing /metrics and the docs surface) — a single NewRouter
 // used by both main.go and the e2e harness makes that drift impossible.
 //
-// Unlike iam-org-membership, this service is a pure leaf (LLD §4): no
-// RLS/tenant-context GUC (LLD §9), no outbox/SNS/SQS (LLD §10), so there
+// Unlike iam-org-membership, this service is a pure leaf (LLD §3): no
+// RLS/tenant-context GUC (LLD §10), no outbox/SNS/SQS (LLD §7), so there
 // is no GUCBridge middleware, no tenant/membership gates, and no Outbox
 // pinger — IdentityBridgeMiddleware only does identity parsing.
 package http
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
@@ -91,7 +92,7 @@ func NewRouter(cfg RouterConfig) *Router {
 	r.RedirectTrailingSlash = false
 	// Gin's built-in 405 handler returns an empty body. Override it so every
 	// 405 carries the same JSON error envelope as all other error responses
-	// (LLD §20). The Allow header is preserved — Gin sets it before this
+	// (LLD §17). The Allow header is preserved — Gin sets it before this
 	// handler fires.
 	r.NoMethod(func(c *gin.Context) {
 		c.JSON(http.StatusMethodNotAllowed, map[string]any{
@@ -108,7 +109,7 @@ func NewRouter(cfg RouterConfig) *Router {
 	// clients that send the header (covers curl, most HTTP clients, and all
 	// SDK callers). MaxBytesReader is kept as a second line of defence for
 	// chunked requests that omit Content-Length — HandleError detects the
-	// resulting *http.MaxBytesError and also returns 413 (LLD §20,
+	// resulting *http.MaxBytesError and also returns 413 (LLD §17,
 	// request_entity_too_large row).
 	r.Use(func(c *gin.Context) {
 		if c.Request.ContentLength > 1<<20 {
@@ -198,9 +199,18 @@ func registerDocsRoutes(r *gin.Engine, cfg RouterConfig) {
 	var authMiddleware gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if cfg.Docs.Environment == "production" {
 		if cfg.Docs.AuthToken != "" {
-			token := cfg.Docs.AuthToken
+			wantAuth := []byte("Bearer " + cfg.Docs.AuthToken)
 			authMiddleware = func(c *gin.Context) {
-				if c.GetHeader("Authorization") != "Bearer "+token {
+				got := []byte(c.GetHeader("Authorization"))
+				// subtle.ConstantTimeCompare already returns 0 safely on a
+				// length mismatch (it never panics) — the length check
+				// here is purely a cheap early filter, same pattern as the
+				// stdlib's own hmac.Equal. Either way, only the token's
+				// length leaks via timing, never its content, which is the
+				// standard trade-off this comparison guards against (a
+				// plain != leaks content byte-by-byte via early-exit).
+				match := len(got) == len(wantAuth) && subtle.ConstantTimeCompare(got, wantAuth) == 1
+				if !match {
 					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 						"code":    "unauthorized",
 						"message": "docs require Authorization: Bearer <DOCS_AUTH_TOKEN>",
@@ -227,9 +237,9 @@ func registerDocsRoutes(r *gin.Engine, cfg RouterConfig) {
 	})
 }
 
-// requestMetricsMiddleware records LLD §13.2's
+// requestMetricsMiddleware records LLD §11.2's
 // catalog_admin_requests_total{route,status} and
-// catalog_admin_request_duration_seconds{route,quantile} for every request
+// catalog_admin_request_duration_seconds{route} (a Histogram, CAT-D13) for every request
 // through the /api/v1 group — this service's own business-level rollup,
 // distinct from (and in addition to) gincommon's generic http_requests_total/
 // http_request_duration_seconds (method/status_class/error_class labels,
@@ -258,7 +268,7 @@ func registerAPIRoutes(r *gin.Engine, cfg RouterConfig) {
 	internalH := cfg.InternalHandler
 
 	// Protected API group. requestMetricsMiddleware runs first so it
-	// records every terminal outcome (LLD §13.2's
+	// records every terminal outcome (LLD §11.2's
 	// catalog_admin_requests_total/_request_duration_seconds), including
 	// requests rejected by auth below it in the chain — not just ones that
 	// reach a handler. No GUCBridge here (see package doc) — just identity
@@ -270,11 +280,11 @@ func registerAPIRoutes(r *gin.Engine, cfg RouterConfig) {
 	protected = append(protected, IdentityBridgeMiddleware(), RequireJSONContentType())
 	v1 := r.Group("/api/v1", protected...)
 
-	// CAT-6/CAT-7 — public, any authenticated caller (LLD §6).
+	// CAT-6/CAT-7 — public, any authenticated caller (LLD §5.3).
 	v1.GET("/departments", deptH.List)
 	v1.GET("/departments/:id", deptH.Get)
 
-	// Operator routes — CAT-1/CAT-2/CAT-3/CAT-4/CAT-5 (LLD §6, §9).
+	// Operator routes — CAT-1/CAT-2/CAT-3/CAT-4/CAT-5 (LLD §5.3, §10).
 	op := v1.Group("/operator", RequireOperatorRole())
 	op.POST("/departments", deptH.Create)              // CAT-1
 	op.PATCH("/departments/:id", deptH.Patch)          // CAT-2
@@ -283,7 +293,7 @@ func registerAPIRoutes(r *gin.Engine, cfg RouterConfig) {
 	op.GET("/plans/:code", planH.Get)                  // CAT-4
 	op.PATCH("/plans/:code", planH.Patch)              // CAT-5
 
-	// Internal routes — CAT-I1/CAT-I2, mesh-only (LLD §7, §9).
+	// Internal routes — CAT-I1/CAT-I2, mesh-only (LLD §5.3, §10).
 	internal := v1.Group("/internal", RequireSystemRole())
 	internal.GET("/departments", internalH.Departments) // CAT-I1
 	internal.GET("/plans", internalH.Plans)             // CAT-I2

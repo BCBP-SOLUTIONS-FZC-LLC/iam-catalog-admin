@@ -10,16 +10,16 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/port"
 )
 
-// defaultPlansCacheTTL is LLD §8's cat:plans TTL default. Externalized via
-// CATALOG_TTL_SECONDS (LLD §15) — see WithCacheTTL.
+// defaultPlansCacheTTL is LLD §6's cat:plans TTL default. Externalized via
+// CATALOG_TTL_SECONDS (LLD §12) — see WithCacheTTL.
 const defaultPlansCacheTTL = 60 * time.Second
 
 // PlanService implements CAT-4, CAT-5, and the listing half of CAT-I2.
 // Every write method assumes the handler-layer platform_operator gate
-// (LLD §9) has already run. This service never reads or writes
+// (LLD §10) has already run. This service never reads or writes
 // tenants.feature_flags (Core's override delta) and computes no
 // "effective" value — that merge happens exclusively in Core at I-8 read
-// time (LLD §5.3, PLAN-6). This service owns the baseline only.
+// time (LLD §4.6, PLAN-6). This service owns the baseline only.
 type PlanService struct {
 	repo     port.PlanRepository
 	cache    port.Cache
@@ -40,7 +40,7 @@ func (s *PlanService) WithCacheTTL(d time.Duration) *PlanService {
 }
 
 // List serves CAT-4 (operator list) and CAT-I2 (internal bulk). The full
-// three-tier catalog is read-through cached at cat:plans (LLD §8).
+// three-tier catalog is read-through cached at cat:plans (LLD §6).
 func (s *PlanService) List(ctx context.Context) ([]domain.Plan, error) {
 	if s.cache != nil {
 		if raw, err := s.cache.Get(ctx, "cat:plans"); err == nil && raw != nil {
@@ -62,7 +62,7 @@ func (s *PlanService) List(ctx context.Context) ([]domain.Plan, error) {
 	return all, nil
 }
 
-// GetByCode serves CAT-4's single-plan read. Not cache-fronted (LLD §8
+// GetByCode serves CAT-4's single-plan read. Not cache-fronted (LLD §6
 // only names the whole-catalog key); falls straight through to Postgres.
 func (s *PlanService) GetByCode(ctx context.Context, code domain.TenantPlan) (*domain.Plan, error) {
 	switch code {
@@ -113,8 +113,8 @@ func (s *PlanService) Patch(ctx context.Context, code domain.TenantPlan, patch *
 	}
 	// PLAN-6(d): feature_set values must be scalars — no nested
 	// objects/arrays, the same defense O-4's allow-list check applies to
-	// Core's tenants.feature_flags override delta (LLD §5.3). Distinct 400
-	// invalid_feature_value (LLD §20 Appendix A), not the generic
+	// Core's tenants.feature_flags override delta (LLD §4.6). Distinct 400
+	// invalid_feature_value (LLD §17), not the generic
 	// validation_error — a client needs to distinguish "malformed request"
 	// from "this specific key's value is the wrong shape".
 	for k, v := range patch.FeatureSet {

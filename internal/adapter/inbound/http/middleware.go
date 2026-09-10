@@ -1,7 +1,7 @@
 // Package http implements the inbound HTTP surface: Gin handlers, DTOs,
 // and the middleware chain that binds gateway-injected identity into the
 // request context. Unlike iam-org-membership, there is no RLS GUC to
-// bridge here (LLD §9 — neither departments nor plans carries a
+// bridge here (LLD §10 — neither departments nor plans carries a
 // tenant_id), so IdentityBridgeMiddleware only does the identity-parsing
 // half of O&M's GUCBridgeMiddleware.
 package http
@@ -18,9 +18,9 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/internal/core/domain"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/pkg/requestctx"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/gincommon"
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Logger is the minimal structured-logging capability this package needs —
@@ -106,7 +106,7 @@ func RequireJSONContentType() gin.HandlerFunc {
 }
 
 // RequireSystemRole gates /api/v1/internal/* to the reserved iam-system
-// principal (LLD §9 — CAT-I1/CAT-I2 are mesh-only). NetworkPolicy is the
+// principal (LLD §10 — CAT-I1/CAT-I2 are mesh-only). NetworkPolicy is the
 // primary defence; this middleware is defense-in-depth.
 func RequireSystemRole() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -121,7 +121,7 @@ func RequireSystemRole() gin.HandlerFunc {
 	}
 }
 
-// RequireOperatorRole gates /api/v1/operator/* (LLD §9). Every operator
+// RequireOperatorRole gates /api/v1/operator/* (LLD §10). Every operator
 // route re-checks this in-handler too (requireOperator), mirroring O&M's
 // AUTH-6 defense-in-depth pattern.
 func RequireOperatorRole() gin.HandlerFunc {
@@ -196,7 +196,7 @@ func (w *bufferedWriter) WriteString(s string) (int, error) {
 // service's smaller error catalogue.
 func HandleError(c *gin.Context, err error) {
 	// Detect oversized body from chunked requests that bypass the
-	// Content-Length pre-check in the router middleware (LLD §20,
+	// Content-Length pre-check in the router middleware (LLD §17,
 	// request_entity_too_large row).
 	var maxErr *http.MaxBytesError
 	if errors.As(err, &maxErr) {
@@ -214,14 +214,18 @@ func HandleError(c *gin.Context, err error) {
 		c.AbortWithStatusJSON(status, mergedBody)
 		return
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		if isDBUnavailableSQLState(pgErr.Code) {
-			er := newErrorResponse(c, domain.ErrDBUnavailable.Error(), "database unavailable")
-			er.Status = http.StatusServiceUnavailable
-			c.AbortWithStatusJSON(http.StatusServiceUnavailable, er)
-			return
-		}
+	// Raw PgError that was not caught and translated by the service
+	// layer. wrapConnErr maps classes 08/53/57/58 to ErrDBUnavailable, so
+	// the DomainError branch above is the production path. This fallback
+	// still classifies a leaked PgError (tests, future missed wrap) into
+	// 503 db_unavailable per LLD §17 without importing pgconn: classes
+	// 08/53 via pgcommon helpers, 57/58 via the SQLSTATE text pgconn
+	// puts in Error().
+	if pgcommon.IsConnectionException(err) || pgcommon.IsInsufficientResources(err) || isOperatorOrSystemErrorSQLState(err) {
+		er := newErrorResponse(c, domain.ErrDBUnavailable.Error(), "database unavailable")
+		er.Status = http.StatusServiceUnavailable
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, er)
+		return
 	}
 	if pkgLogger != nil {
 		fields := map[string]interface{}{"error_type": fmt.Sprintf("%T", err), "error": err.Error()}
@@ -240,17 +244,17 @@ func HandleError(c *gin.Context, err error) {
 	c.AbortWithStatusJSON(http.StatusInternalServerError, er)
 }
 
-// isDBUnavailableSQLState returns true for SQLSTATE classes that indicate
-// a connectivity or resource-exhaustion failure rather than a logic error.
-func isDBUnavailableSQLState(code string) bool {
-	if len(code) < 2 {
+// isOperatorOrSystemErrorSQLState reports whether err is a Postgres error
+// in SQLSTATE class 57 (operator_intervention) or 58 (system_error).
+// pgcommon v1.3.0 has no dedicated helper for these two, so we match the
+// "(SQLSTATE 57…)" / "(SQLSTATE 58…)" text pgconn puts in Error() instead
+// of type-asserting *pgconn.PgError (inbound HTTP must not import pgconn).
+func isOperatorOrSystemErrorSQLState(err error) bool {
+	if !pgcommon.IsPgError(err) {
 		return false
 	}
-	switch strings.ToUpper(code[:2]) {
-	case "08", "53", "57", "58":
-		return true
-	}
-	return false
+	msg := err.Error()
+	return strings.Contains(msg, "SQLSTATE 57") || strings.Contains(msg, "SQLSTATE 58")
 }
 
 func errorResponseWithDetails(er ErrorResponse, details map[string]any) map[string]any {
@@ -272,7 +276,7 @@ func errorResponseWithDetails(er ErrorResponse, details map[string]any) map[stri
 	// A handler-level sub-code (e.g. duplicate_code, invalid_uuid) attached
 	// via WithDetails({"code": ...}) overrides the generic sentinel in
 	// "code" above — keep "error" in lockstep so the two fields never
-	// disagree, matching every other error this service returns (LLD §20).
+	// disagree, matching every other error this service returns (LLD §17).
 	if code, ok := out["code"]; ok {
 		out["error"] = code
 	}

@@ -8,8 +8,10 @@ Editor) without pulling the whole markdown file apart — same convention as
 | File | Embedded in `ARCHITECTURE.md` section |
 |---|---|
 | `mermaid/layer-model.mmd` | "Layer model" |
-| `mermaid/write-flow.mmd` | "Request lifecycle — a write (CAT-2)" |
-| `mermaid/cache-strategy.mmd` | "Cache design" |
+| `mermaid/package-dependencies.mmd` | "Package dependency graph" |
+| `mermaid/request-flow.mmd` | "Request flow" |
+| `mermaid/write-flow.mmd` | "Write flow" |
+| `mermaid/cache-strategy.mmd` | "Cache strategy" |
 
 To regenerate the embedded copies after editing a `.mmd` file, paste its contents into the
 matching ```mermaid fenced block in `ARCHITECTURE.md` — there is no automated sync script for a

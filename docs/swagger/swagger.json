@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Authoritative system of record for the platform's two global, non-tenant-scoped reference catalogs — the department catalog and the plan entitlement catalog. Extracted from Org & Membership (`iam-org-membership`) per ADR-0007 Wave 1.\n\n**No tenant scope.** Neither departments nor plans carries a tenant_id — this service has no RLS/tenant-context GUC (LLD §9). It is a pure leaf: no outbound synchronous calls to any other IAM service, no outbox/SNS/SQS (LLD §10, CAT-EVT-1/2).\n\n**Route prefixes.**  `/api/v1/departments` — any authenticated caller (JWT via gateway), read-only.  `/api/v1/operator/*` — platform operators (`platform_operator` role): the only writers for departments, and both reads and writes for plans (no public plan-read route).  `/api/v1/internal/*` — in-mesh services (mTLS, `iam-system` role), bulk catalog reads for other IAM services' caches.\n\nEvery mutation echoes `record_version` for optimistic-locking round-trip.",
+        "description": "Authoritative system of record for the platform's two global, non-tenant-scoped reference catalogs — the department catalog and the plan entitlement catalog. Extracted from Org & Membership (`iam-org-membership`) per ADR-0007 Wave 1.\n\n**No tenant scope.** Neither departments nor plans carries a tenant_id — this service has no RLS/tenant-context GUC (LLD §10). It is a pure leaf: no outbound synchronous calls to any other IAM service, no outbox/SNS/SQS (LLD §7, CAT-EVT-1/2).\n\n**Route prefixes.**  `/api/v1/departments` — any authenticated caller (JWT via gateway), read-only.  `/api/v1/operator/*` — platform operators (`platform_operator` role): the only writers for departments, and both reads and writes for plans (no public plan-read route).  `/api/v1/internal/*` — in-mesh services (mTLS, `iam-system` role), bulk catalog reads for other IAM services' caches.\n\nEvery mutation echoes `record_version` for optimistic-locking round-trip.",
         "title": "IAM Catalog / Admin Config API",
         "contact": {
             "name": "BCBP Solutions",
@@ -603,7 +603,8 @@
                 "record_versions": {
                     "type": "object",
                     "additionalProperties": {
-                        "type": "integer"
+                        "type": "integer",
+                        "format": "int64"
                     }
                 }
             }

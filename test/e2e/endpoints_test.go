@@ -589,7 +589,7 @@ func TestE2E081_MalformedUserIDHeader_Returns401(t *testing.T) {
 
 // ═════════════════════════════════════════════════════════════════════════
 // Full read-cutover flow — the exact shape Core Org & Membership / Group
-// Mapping Service will depend on once wired (LLD §7, §8, §12 Phase 2).
+// Mapping Service will depend on once wired (LLD §18, §6, §19 Phase 2).
 // ═════════════════════════════════════════════════════════════════════════
 
 // Test Case ID:      CAT-E2E-090

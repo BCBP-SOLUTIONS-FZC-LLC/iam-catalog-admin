@@ -1,6 +1,6 @@
 # Key Design Decisions
 
-The LLD's decision register (§14, CAT-D1 through CAT-D12) is the authoritative record; the
+The LLD's decision register (§16, CAT-D1 through CAT-D13) is the authoritative record; the
 highlights most relevant to day-to-day work:
 
 1. **`departments` + `plans` extracted as one combined service (CAT-D1)** — both share the

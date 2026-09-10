@@ -216,7 +216,7 @@ func TestCreateDepartment_NoOutboxEventsEmitted(t *testing.T) {
 		`SELECT EXISTS(SELECT 1 FROM information_schema.tables
          WHERE table_schema='public' AND table_name='outbox_events')`).Scan(&exists)
 	require.NoError(t, err)
-	assert.False(t, exists, "outbox_events table must not exist — this service has no outbox runner (LLD §10)")
+	assert.False(t, exists, "outbox_events table must not exist — this service has no outbox runner (LLD §7)")
 }
 
 // Scenario CA1-CON-04: concurrent POSTs with same code → exactly one 201, one 409

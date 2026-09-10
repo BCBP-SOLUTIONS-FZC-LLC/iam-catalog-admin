@@ -34,8 +34,9 @@ and falls back to its own default (2) with a startup warning — leave it unset 
 that validation.
 
 **Migration DSN routing:** migrations **must bypass PgBouncer** because the migration runner uses
-`pg_advisory_lock`, session-scoped and broken under transaction pooling. `MigrationDSNFromEnv`
-prefers `MIGRATION_DATABASE_URL`; falls back to the already-resolved app DSN if unset. `main.go`
+`pg_advisory_lock`, session-scoped and broken under transaction pooling. `MigrationDSNFromEnv()`
+prefers `MIGRATION_DATABASE_URL` (applying `ApplyStatementTimeout` to it); falls back to
+`DSNFromEnv()` if unset. `main.go`
 panics at startup if `PG_BOUNCER_MODE=true` and neither `MIGRATION_DATABASE_URL` nor
 `DATABASE_URL` is set.
 

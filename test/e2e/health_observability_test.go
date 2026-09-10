@@ -69,13 +69,13 @@ func TestReadyz_PostgresDown_Returns503(t *testing.T) {
 // Scenario CA-BL-06: POST /api/v1/operator/departments → 503 dependency_unavailable
 // when Postgres is unreachable. Closes the connection pool to cut DB connectivity,
 // then asserts the service propagates the failure as a 503 with the
-// dependency_unavailable error code (LLD §20 / CAT-FAIL-2).
+// dependency_unavailable error code (LLD §17 / CAT-FAIL-2).
 func TestBusinessLogic_PostgresDown_Returns503(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 
 	// Cut DB connectivity — subsequent repository calls will fail with a
-	// pgx connection error, which pgcommon.WrapConnErr maps to
+	// pgx connection error, which wrapConnErr maps to
 	// ErrDependencyUnavailable → HandleError → 503.
 	env.pool.Close()
 
@@ -140,4 +140,7 @@ func TestObservability_AllExpectedCountersPresent(t *testing.T) {
 	assert.Contains(t, body, "catalog_admin_cache_misses_total")
 	assert.Contains(t, body, "catalog_admin_writes_total")
 	assert.Contains(t, body, "catalog_admin_optimistic_lock_conflicts_total")
+	// Generic HTTP metrics from gincommon.ObservabilityMiddlewares — same
+	// scrape as catalog_admin_* (dedicated METRICS_PORT listener).
+	assert.Contains(t, body, "http_requests_total")
 }

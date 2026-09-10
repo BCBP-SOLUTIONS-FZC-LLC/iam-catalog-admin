@@ -23,6 +23,9 @@ spec:
     metadata:
       labels:
         {{- include "iam-catalog-admin.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       annotations:
         {{- if .Values.existingSecret }}
         # When using an external secret (ESO / CSI), bump rotationEpoch to force
@@ -33,16 +36,18 @@ spec:
         # Force rollout when the Secret changes (checksum triggers pod recycling).
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
-      serviceAccountName: {{ if .Values.serviceAccount.create }}{{ include "iam-catalog-admin.fullname" . }}{{ else }}default{{ end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ if .Values.serviceAccount.create }}{{ .Values.serviceAccount.name | default (include "iam-catalog-admin.fullname" .) }}{{ else }}default{{ end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532      # distroless nonroot UID
-        runAsGroup: 65532
-        fsGroup: 65532
-        seccompProfile:
-          type: RuntimeDefault
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ include "iam-catalog-admin.imageTag" . }}"
@@ -55,11 +60,7 @@ spec:
               containerPort: {{ .Values.service.metricsPort }}
               protocol: TCP
           securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
+            {{- toYaml .Values.securityContext | nindent 12 }}
           env:
             - name: BUILD_VERSION
               value: {{ include "iam-catalog-admin.imageTag" . | quote }}
@@ -99,6 +100,24 @@ spec:
             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # readOnlyRootFilesystem: true (above) leaves no writable path by
+            # default; mount a scratch /tmp so anything in the process or its
+            # dependencies that assumes a writable temp dir (os.TempDir()) has
+            # somewhere to write instead of failing at the syscall.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       affinity:
         # Hard anti-affinity: require pods to land on different nodes.
         # preferred (soft) anti-affinity allows all replicas on one node —

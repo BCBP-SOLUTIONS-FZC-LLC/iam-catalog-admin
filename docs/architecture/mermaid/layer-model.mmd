@@ -11,7 +11,10 @@ graph TD
         http["inbound/http/\nGin handlers · DTOs · middleware\nerror-model translation"]
         pg["outbound/postgres/\nrepositories · migrations\nRunMigrations"]
         valkey["outbound/valkey/\nCache implementation"]
-        metrics["outbound/metrics/\ncatadmin_* Prometheus counters"]
+        metrics["outbound/metrics/\ncatalog_admin_* Prometheus counters"]
+    end
+    subgraph pkg["Shared Packages — pkg/"]
+        requestctx["requestctx/\nRequestContext{UserID, TenantID, Roles}\nHasRole · IsOperator · IsSystem"]
     end
 
     main --> http
@@ -19,6 +22,7 @@ graph TD
     main --> valkey
     main --> service
     http --> service
+    http --> requestctx
     service --> port
     service --> domain
     pg -.implements.-> port

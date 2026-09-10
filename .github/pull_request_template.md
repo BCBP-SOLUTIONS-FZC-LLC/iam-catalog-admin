@@ -34,6 +34,9 @@ Provide a clear description of the changes.
 - [ ] No debug logs / commented-out code
 - [ ] No secrets or DSNs hardcoded
 
+### API Contract
+- [ ] Swagger docs regenerated if handler annotations changed (`make swag` — all three files in `docs/swagger/` committed; CI's `swag-check` step also gates this)
+
 ### Database / Migrations
 - [ ] New migrations have matching `.up.sql` and `.down.sql`
 - [ ] Down migration correctly reverses the up migration
