@@ -464,7 +464,7 @@ func TestPatchPlan_NoOutboxEventsEmitted(t *testing.T) {
 		`SELECT EXISTS(SELECT 1 FROM information_schema.tables
          WHERE table_schema='public' AND table_name='outbox_events')`).Scan(&exists)
 	require.NoError(t, err)
-	assert.False(t, exists, "outbox_events must not exist — catalog-admin has no outbox (LLD §10)")
+	assert.False(t, exists, "outbox_events must not exist — catalog-admin has no outbox (LLD §7)")
 }
 
 // Scenario CA5-BL-02 / CROSS-CA-04: after PATCH, GET /operator/plans reflects updated value

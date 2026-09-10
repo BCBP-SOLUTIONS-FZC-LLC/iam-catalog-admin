@@ -7,7 +7,7 @@ package http
 //
 // Some error codes carry additional, code-specific top-level fields beyond
 // the ones below — e.g. optimistic_lock_conflict adds record_version,
-// field_immutable adds field (LLD §20) — set via domain.DomainError.WithDetails
+// field_immutable adds field (LLD §17) — set via domain.DomainError.WithDetails
 // and merged flatly onto the response body by errorResponseWithDetails
 // (middleware.go), not nested under a details key. There is deliberately no
 // generic details field on this struct: an earlier revision had one
@@ -55,7 +55,7 @@ type DepartmentListResponse struct {
 	Items []DepartmentResponse `json:"items"`
 }
 
-// InternalDepartmentsResponse is CAT-I1's bulk-read response shape (LLD §7.1).
+// InternalDepartmentsResponse is CAT-I1's bulk-read response shape (LLD §5.4).
 type InternalDepartmentsResponse struct {
 	Departments []DepartmentResponse `json:"departments"`
 	AsOf        string               `json:"as_of"`
@@ -97,7 +97,7 @@ type PlanPatchRequest struct {
 	RecordVersion         int64          `json:"record_version"`
 }
 
-// InternalPlansResponse is CAT-I2's bulk-read response shape (LLD §7.2).
+// InternalPlansResponse is CAT-I2's bulk-read response shape (LLD §5.4).
 type InternalPlansResponse struct {
 	Plans          []PlanResponse   `json:"plans"`
 	RecordVersions map[string]int64 `json:"record_versions"`

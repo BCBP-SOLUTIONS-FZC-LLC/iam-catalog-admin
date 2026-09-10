@@ -4,7 +4,7 @@
 // into gin.Context. Ported unchanged from iam-org-membership's
 // pkg/requestctx/context.go — this service has no tenant concept of its
 // own, but still needs the role-check methods (IsOperator/IsSystem) since
-// every route is either operator-gated or system-gated (LLD §9).
+// every route is either operator-gated or system-gated (LLD §10).
 package requestctx
 
 import (

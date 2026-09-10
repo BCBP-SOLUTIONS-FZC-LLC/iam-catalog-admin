@@ -155,7 +155,7 @@ func TestHandleError_DomainErrorMapping(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// TestHandleError_SubCodeOverride_SyncsErrorField verifies LLD §20's
+// TestHandleError_SubCodeOverride_SyncsErrorField verifies LLD §17's
 // documented invariant ("error and code must agree, like every other
 // error this service returns") holds even when a handler attaches a more
 // specific sub-code via WithDetails on top of a generic sentinel — e.g.
@@ -221,13 +221,23 @@ func TestHandleError_MissingIdentity(t *testing.T) {
 }
 
 func TestHandleError_PgErrorUnavailableSQLState(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	// wrapConnErr maps 08/53/57/58 to ErrDBUnavailable in production;
+	// HandleError still classifies a leaked PgError the same way via
+	// pgcommon.IsConnectionException / IsInsufficientResources /
+	// isOperatorOrSystemErrorSQLState — without importing pgconn in
+	// production middleware.go (tests construct *pgconn.PgError).
+	for _, code := range []string{"08006", "53300", "57014", "57P01", "58030"} {
+		t.Run(code, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 
-	HandleError(c, &pgconn.PgError{Code: "57014", Message: "canceling statement due to statement timeout"})
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+			HandleError(c, &pgconn.PgError{Code: code, Message: "unavailable"})
+			assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+			assert.Contains(t, w.Body.String(), "db_unavailable")
+		})
+	}
 }
 
 func TestHandleError_PgErrorNonUnavailableSQLState(t *testing.T) {

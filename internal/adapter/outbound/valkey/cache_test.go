@@ -63,7 +63,7 @@ func TestNew_FallsBackToPlainAddrOnParseError(t *testing.T) {
 	require.NotNil(t, c.client)
 }
 
-// TestCache_Delete_FailureIsLogged verifies LLD §11.1's failure-matrix
+// TestCache_Delete_FailureIsLogged verifies LLD §9.3's failure-matrix
 // entry ("A CAT-1/CAT-2 write succeeds but the local cache DEL fails" →
 // "Logged error, post-commit"): a Delete failure must be observable in
 // logs, not silently discarded, even though it's still advisory and never

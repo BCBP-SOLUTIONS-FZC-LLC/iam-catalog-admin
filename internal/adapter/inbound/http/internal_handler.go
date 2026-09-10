@@ -11,7 +11,7 @@ import (
 // InternalHandler serves CAT-I1/CAT-I2 — mesh-only bulk reads consumed by
 // Core Org & Membership (om:departments/om:plans) and the Group Mapping
 // Service (gm:departments) to populate their own local caches, replacing
-// the DB FKs each loses on the physical split (LLD §7).
+// the DB FKs each loses on the physical split (LLD §18).
 type InternalHandler struct {
 	depts *service.DepartmentService
 	plans *service.PlanService
@@ -21,7 +21,7 @@ func NewInternalHandler(depts *service.DepartmentService, plans *service.PlanSer
 	return &InternalHandler{depts: depts, plans: plans}
 }
 
-// Departments is CAT-I1 — GET /internal/departments (LLD §7.1).
+// Departments is CAT-I1 — GET /internal/departments (LLD §5.4).
 //
 // @Summary      CAT-I1 — Bulk department catalog read (mesh-only)
 // @Tags         internal
@@ -50,7 +50,7 @@ func (h *InternalHandler) Departments(c *gin.Context) {
 	})
 }
 
-// Plans is CAT-I2 — GET /internal/plans (LLD §7.2).
+// Plans is CAT-I2 — GET /internal/plans (LLD §5.4).
 //
 // @Summary      CAT-I2 — Bulk plan catalog read (mesh-only)
 // @Tags         internal

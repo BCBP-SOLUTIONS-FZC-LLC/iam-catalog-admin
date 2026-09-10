@@ -1,5 +1,5 @@
 // Package valkey implements port.Cache backed by Valkey (Redis-compatible).
-// Cache is advisory-only (LLD §8, CAT-FAIL-1) — every miss, timeout, or
+// Cache is advisory-only (LLD §6, CAT-FAIL-1) — every miss, timeout, or
 // outage must fall through to Postgres; /readyz stays ready while
 // Postgres is healthy even if the cache is down.
 package valkey
@@ -37,7 +37,7 @@ var pkgLogger Logger
 
 // SetLogger installs the structured logger used by this package's own
 // error logging (currently just Delete's invalidation-failure line, LLD
-// §11.1). Call once at startup, mirroring metrics.Register()'s idiom.
+// §9.3). Call once at startup, mirroring metrics.Register()'s idiom.
 func SetLogger(l Logger) { pkgLogger = l }
 
 // New creates a Cache from addr. addr may be plain host:port or a full URL
@@ -63,7 +63,7 @@ func New(addr string) *Cache {
 }
 
 // Get returns (nil, nil) on cache miss. Records a hit/miss metric per key
-// (LLD §13 — "cat:departments/cat:plans cache hit ratio" is one of this
+// (LLD §11 — "cat:departments/cat:plans cache hit ratio" is one of this
 // service's own dashboard's tracked signals) so the adapter, not the core
 // service layer, owns this cross-cutting concern.
 func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
@@ -86,9 +86,9 @@ func (c *Cache) Set(ctx context.Context, key string, value []byte, ttl time.Dura
 }
 
 // Delete invalidates keys (called on every CAT-1/CAT-2/CAT-5 write, post-
-// commit — LLD §8). A failure here is advisory, same as everywhere else in
+// commit — LLD §6). A failure here is advisory, same as everywhere else in
 // this cache (CAT-FAIL-1): the stale entry self-heals within its own TTL,
-// so this never fails the write. It is logged, per §11.1's failure matrix,
+// so this never fails the write. It is logged, per §9.3's failure matrix,
 // so an operator can tell a Valkey write-path problem from silence.
 //
 // No trace_id/request_id here: platform-gincommon's TraceIDFromContext/
@@ -122,7 +122,7 @@ func (c *Cache) Close() error {
 	return c.client.Close()
 }
 
-// ─── Key builders (LLD §8) ───────────────────────────────────────────────
+// ─── Key builders (LLD §6) ───────────────────────────────────────────────
 
 // DepartmentsKey builds cat:departments — the full department catalog,
 // 60s TTL, invalidated on any CAT-1/CAT-2 write.

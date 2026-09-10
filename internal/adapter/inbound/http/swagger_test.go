@@ -70,6 +70,15 @@ func TestSwagger_ProductionWrongToken_Returns401(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, do(""))
 	// Wrong token → 401
 	assert.Equal(t, http.StatusUnauthorized, do("Bearer wrong-token"))
+	// Wrong token of the SAME length as the correct one → 401. Exercises
+	// subtle.ConstantTimeCompare's actual byte comparison, not just the
+	// length-mismatch short-circuit the case above and below would also
+	// pass under.
+	sameLengthWrong := make([]byte, len(secret))
+	for i := range sameLengthWrong {
+		sameLengthWrong[i] = 'x'
+	}
+	assert.Equal(t, http.StatusUnauthorized, do("Bearer "+string(sameLengthWrong)))
 	// Correct token → not 401 (swagger handler may return 200 or redirect)
 	assert.NotEqual(t, http.StatusUnauthorized, do("Bearer "+secret))
 }

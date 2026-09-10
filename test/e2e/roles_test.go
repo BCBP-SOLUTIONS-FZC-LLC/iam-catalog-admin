@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRoles_AppRoleHasNoBYPASSRLS closes LLD §9's claim that "CI verifies
+// TestRoles_AppRoleHasNoBYPASSRLS closes LLD §10's claim that "CI verifies
 // this [catalog_admin_app has no BYPASSRLS] the same way MIG-3/MIG-5
 // verify it for O&M today" — previously an aspirational statement with no
 // actual test or CI job behind it (found in a reconciliation pass against
@@ -28,5 +28,5 @@ func TestRoles_AppRoleHasNoBYPASSRLS(t *testing.T) {
 	err := env.rawPool.QueryRow(context.Background(), `
 		SELECT rolbypassrls FROM pg_roles WHERE rolname = 'catalog_admin_app'`).Scan(&bypass)
 	require.NoError(t, err, "catalog_admin_app role must exist (created by 000001_init_schema.up.sql)")
-	assert.False(t, bypass, "catalog_admin_app must NOT hold BYPASSRLS (LLD §9)")
+	assert.False(t, bypass, "catalog_admin_app must NOT hold BYPASSRLS (LLD §10)")
 }

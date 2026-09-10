@@ -135,21 +135,10 @@ func (r *PlanRepository) Update(ctx context.Context, code domain.TenantPlan, pat
 
 	var out *domain.Plan
 	err := withPool(ctx, r.pool, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, sql, args...)
-		p, err := scanPlan(row)
+		p, err := planUpdateFromTx(ctx, tx, code, sql, args)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				var v int64
-				probe := tx.QueryRow(ctx, `SELECT record_version FROM plans WHERE code = $1`, string(code))
-				if perr := probe.Scan(&v); perr != nil {
-					if errors.Is(perr, pgx.ErrNoRows) {
-						return domain.NewError(domain.ErrPlanNotFound, "plan not found")
-					}
-					return perr
-				}
+			if errors.Is(err, domain.ErrOptimisticLockConflict) {
 				catmetrics.OptimisticLockConflicts.WithLabelValues("plans").Inc()
-				return domain.NewError(domain.ErrOptimisticLockConflict, "record version conflict").
-					WithDetails(map[string]any{"record_version": v})
 			}
 			return err
 		}
@@ -160,6 +149,10 @@ func (r *PlanRepository) Update(ctx context.Context, code domain.TenantPlan, pat
 	return out, err
 }
 
+// planUpdateFromTx is Update's own transaction body, factored out so the
+// white-box test suite exercises the exact code path Update runs (previously
+// this logic was duplicated inline in Update while this function sat unused
+// — the tested path and the shipped path had silently diverged).
 func planUpdateFromTx(ctx context.Context, tx pgx.Tx, code domain.TenantPlan, sql string, args []any) (*domain.Plan, error) {
 	row := tx.QueryRow(ctx, sql, args...)
 	p, err := scanPlan(row)

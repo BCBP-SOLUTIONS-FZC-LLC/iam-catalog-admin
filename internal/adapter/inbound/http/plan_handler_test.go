@@ -145,7 +145,7 @@ func TestPlanHandler_Patch_NonScalarFeatureSetValue_Returns400InvalidFeatureValu
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	var er ErrorResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &er))
-	// LLD §20 Appendix A: a distinct invalid_feature_value code, not the
+	// LLD §17: a distinct invalid_feature_value code, not the
 	// generic validation_error — error and code must agree, like every
 	// other error this service returns.
 	assert.Equal(t, "invalid_feature_value", er.Code)

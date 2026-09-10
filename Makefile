@@ -25,7 +25,7 @@ TEST_PG_PKGS   := ./test/postgres/...
 TEST_E2E_PKGS  := ./test/e2e/...
 
 # White-box (package-internal) tests run alongside test/unit — these
-# exercise package-private helpers (isDBUnavailableSQLState, requireOperator,
+# exercise package-private helpers (isOperatorOrSystemErrorSQLState, requireOperator,
 # withPool, envOr, ...) that a black-box test/unit package can't reach.
 TEST_INTERNAL_PKGS := ./internal/adapter/inbound/http/... \
                       ./internal/adapter/outbound/postgres/... \

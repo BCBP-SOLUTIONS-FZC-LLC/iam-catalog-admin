@@ -12,17 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// defaultDepartmentsCacheTTL is LLD §8's cat:departments TTL default — short
+// defaultDepartmentsCacheTTL is LLD §6's cat:departments TTL default — short
 // because this service's own DB is the true source; the cache mainly
 // shields read replicas from GET /api/v1/departments traffic, not a
 // freshness guarantee for consumers (those get their own longer-TTL
-// om:departments key, populated from CAT-I1, per §8). Externalized via
-// CATALOG_TTL_SECONDS (LLD §15) — see WithCacheTTL.
+// om:departments key, populated from CAT-I1, per §6). Externalized via
+// CATALOG_TTL_SECONDS (LLD §12) — see WithCacheTTL.
 const defaultDepartmentsCacheTTL = 60 * time.Second
 
 // DepartmentService implements CAT-1, CAT-2, CAT-3, CAT-6, CAT-7, and the
 // listing half of CAT-I1. Every write method assumes the handler-layer
-// platform_operator gate (LLD §9) has already run.
+// platform_operator gate (LLD §10) has already run.
 type DepartmentService struct {
 	repo     port.DepartmentRepository
 	cache    port.Cache
@@ -43,7 +43,7 @@ func (s *DepartmentService) WithCacheTTL(d time.Duration) *DepartmentService {
 }
 
 // List serves CAT-6 (public) and CAT-I1 (internal bulk, activeOnly=false).
-// The full catalog is read-through cached at cat:departments (LLD §8);
+// The full catalog is read-through cached at cat:departments (LLD §6);
 // activeOnly filtering is applied in-memory after a cache hit so both
 // callers share one cache entry.
 func (s *DepartmentService) List(ctx context.Context, activeOnly bool) ([]domain.Department, error) {
@@ -84,7 +84,7 @@ func (s *DepartmentService) listAllCached(ctx context.Context) ([]domain.Departm
 	return all, nil
 }
 
-// Get serves CAT-7 — single department read. Not cache-fronted (LLD §8
+// Get serves CAT-7 — single department read. Not cache-fronted (LLD §6
 // only names the whole-catalog key); falls straight through to Postgres,
 // which is CAT-FAIL-1's source of truth regardless.
 func (s *DepartmentService) Get(ctx context.Context, id uuid.UUID) (*domain.Department, error) {
@@ -137,7 +137,7 @@ func (s *DepartmentService) Patch(ctx context.Context, id uuid.UUID, name *strin
 			case "chk_system_department_name_immutable":
 				// D-11: renaming a system department is a distinct 422 from
 				// the handler-level field_immutable check on code/is_system
-				// in the body (LLD §6/§20) — this is a rule about *which*
+				// in the body (LLD §5.3/§17) — this is a rule about *which*
 				// department (is_system=true), not about which field was sent.
 				return nil, domain.NewError(domain.ErrSystemNameImmutable, "system department name is immutable").
 					WithDetails(map[string]any{"field": "name"})

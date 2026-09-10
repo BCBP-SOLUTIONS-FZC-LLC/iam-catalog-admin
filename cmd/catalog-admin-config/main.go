@@ -1,7 +1,7 @@
 // Package main is the composition root for the Catalog / Admin Config
-// Service (LLD §4). This service is a pure leaf: no outbound synchronous
-// calls to any other IAM service, no outbox/SNS/SQS (LLD §10, CAT-EVT-1/2),
-// and no RLS/tenant-context GUC (LLD §9 — neither departments nor plans
+// Service (LLD §3). This service is a pure leaf: no outbound synchronous
+// calls to any other IAM service, no outbox/SNS/SQS (LLD §7, CAT-EVT-1/2),
+// and no RLS/tenant-context GUC (LLD §10 — neither departments nor plans
 // carries a tenant_id). The startup sequence otherwise mirrors
 // iam-org-membership's cmd/server/main.go so the two services share
 // on-call ergonomics (same health/readyz/metrics shape, same middleware
@@ -33,6 +33,7 @@ import (
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/gincommon"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon/pkg/logger"
 	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgcommon"
+	"github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon/pkg/pgmetrics"
 )
 
 // buildVersion is injected by -ldflags at build time (see Dockerfile / Makefile).
@@ -55,23 +56,31 @@ func main() {
 	httpadapter.SetLogger(log)
 	valkeyadapter.SetLogger(log)
 
-	// ── 2. Tracing (opt-in) ───────────────────────────────────────────────
-	var shutdownTracing func()
-	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" {
-		shutdownTracing = gincommon.InitTracingFromEnv()
-	} else {
-		shutdownTracing = func() {}
-	}
+	// ── 2. Tracing — always install gincommon's TracerProvider so in-process
+	// spans get valid trace IDs even when OTEL_EXPORTER_OTLP_ENDPOINT is unset
+	// (dev). ObservabilityMiddlewares' EnsureInitTelemetry is then a no-op.
+	// Matches iam-org-membership / iam-realm-provisioner: export is a no-op
+	// until a collector is configured; the provider itself is never gated.
+	shutdownTracing := gincommon.InitTracingFromEnv()
 
 	cfg := gincommon.Config{
 		Logger:       log,
 		ServiceName:  envOr("APP_NAME", "catalog-admin-config"),
 		BuildVersion: envOr("BUILD_VERSION", buildVersion),
 	}
+	// ObservabilityMiddlewares is gincommon's public metrics-init API. Call
+	// it here (before any collector registration) so catalog_admin_* /
+	// pgcommon metrics land on gincommon.MetricsRegisterer with matching
+	// {service, version} const labels. NewRouter applies the same middleware
+	// slice to the Gin engine; gincommon's metrics.Init is sync.Once.
+	_ = gincommon.ObservabilityMiddlewares(cfg)
+
+	catmetrics.Register(gincommon.MetricsRegisterer(), gincommon.MetricsConstLabels())
+	pgmetrics.InitWithRegisterer(cfg.ServiceName, cfg.BuildVersion, gincommon.MetricsRegisterer())
 
 	// ── 3. Database ───────────────────────────────────────────────────────
 	// No GUCProvider — this service has no RLS/tenant-context GUC to bridge
-	// (LLD §9); pgcommon.NewPool is still used for pooling, slow-query
+	// (LLD §10); pgcommon.NewPool is still used for pooling, slow-query
 	// logging, and OTel tracing, which are RLS-independent.
 	//
 	// pgcommon.ConfigFromEnv() (not a hand-rolled DSN/MaxConns/MinConns/
@@ -100,8 +109,13 @@ func main() {
 	// was previously typed against pgcommon's unexported port.Logger and so
 	// could not be implemented from outside the module at all.
 	pgCfg.Logger = pgadapter.NewDomainLogger(log)
+	// db.query spans export through the TracerProvider
+	// gincommon.InitTracingFromEnv installed above — same OTLP pipeline as
+	// HTTP spans from ObservabilityMiddlewares. Matches
+	// iam-org-membership / iam-realm-provisioner.
+	pgCfg.Tracer = pgadapter.NewOTelTracer(cfg.ServiceName)
 
-	migrationDSN := pgadapter.MigrationDSNFromEnv(pgCfg.DSN)
+	migrationDSN := pgadapter.MigrationDSNFromEnv()
 
 	pool, err := pgcommon.NewPool(context.Background(), pgCfg)
 	if err != nil {
@@ -112,7 +126,18 @@ func main() {
 	ctx, cancelBackground := context.WithCancel(context.Background())
 	defer cancelBackground()
 
-	if err := pgadapter.RunMigrations(ctx, migrationDSN, pgadapter.NewDomainLogger(log)); err != nil {
+	// A bounded, not just cancellable, context: pg_advisory_lock is
+	// session-scoped, so a prior pod that crashed mid-migration (or a
+	// wedged connection) can hold the lock indefinitely with no signal of
+	// its own. Without this timeout, RunMigrations would simply hang until
+	// Kubernetes' startupProbe budget (120s, deploy/helm/values.yaml)
+	// eventually kills the pod — an opaque failure with no "migration
+	// timed out" log line to diagnose from. 60s leaves headroom under that
+	// budget for the rest of startup (pool connect, cache dial) to still
+	// run and log before the probe would act anyway.
+	migrationCtx, cancelMigration := context.WithTimeout(ctx, 60*time.Second)
+	defer cancelMigration()
+	if err := pgadapter.RunMigrations(migrationCtx, migrationDSN, pgadapter.NewDomainLogger(log)); err != nil {
 		panic(fmt.Sprintf("domain migrations: %v", err))
 	}
 
@@ -129,7 +154,7 @@ func main() {
 	planRepo := pgadapter.NewPlanRepository(pool)
 
 	// CATALOG_TTL_SECONDS externalizes the cat:departments/cat:plans cache
-	// TTL (LLD §15) — previously a compiled constant in both services. A
+	// TTL (LLD §12) — previously a compiled constant in both services. A
 	// malformed value falls back to the 60s default (WithCacheTTL ignores
 	// d <= 0) rather than crashing — cache TTL is low-stakes enough not to
 	// warrant validatePostgresConfig's startup-panic treatment — but the
@@ -173,14 +198,6 @@ func main() {
 		}),
 		Cache: cache,
 	})
-
-	// catalog_admin_* business metrics (LLD §13.2) are registered on
-	// gincommon's own registerer/const-labels, not prometheus.DefaultRegisterer
-	// directly, so they stay consistent with gincommon's own http_requests_total
-	// etc. — same registry, same {service, version} labels. Must run after
-	// NewRouter above: ObservabilityMiddlewares (inside NewRouter) is what
-	// populates MetricsRegisterer()/MetricsConstLabels().
-	catmetrics.Register(gincommon.MetricsRegisterer(), gincommon.MetricsConstLabels())
 
 	// ── 7. Graceful shutdown ───────────────────────────────────────────────
 	srv := &http.Server{
@@ -245,15 +262,22 @@ func main() {
 	log.Info("shutdown signal received — draining", nil)
 
 	// Order: (1) HTTP Shutdown — stop accepting new requests, drain
-	// in-flight; (2) cancelBackground; (3) shutdownTracing; (4) logger
-	// flush. No outbox/SQS-consumer drain step — this service has neither
-	// (LLD §10, CAT-EVT-1/2).
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	// in-flight; (2) metrics server Shutdown; (3) cancelBackground;
+	// (4) shutdownTracing; (5) logger flush. No outbox/SQS-consumer drain
+	// step — this service has neither (LLD §7, CAT-EVT-1/2).
+	//
+	// Each server gets its own independent 30s budget rather than sharing
+	// one context sequentially — a slow API drain (in-flight requests
+	// finishing) would otherwise eat into, or exhaust, the time left for
+	// the metrics server's own shutdown.
+	apiShutdownCtx, cancelAPI := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelAPI()
+	if err := srv.Shutdown(apiShutdownCtx); err != nil {
 		log.Error("HTTP server shutdown error", map[string]interface{}{"error": err.Error()})
 	}
-	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+	metricsShutdownCtx, cancelMetrics := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelMetrics()
+	if err := metricsServer.Shutdown(metricsShutdownCtx); err != nil {
 		log.Error("metrics server shutdown error", map[string]interface{}{"error": err.Error()})
 	}
 	cancelBackground()

@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRequestMetricsMiddleware_RecordsRouteAndStatus verifies LLD §13.2's
+// TestRequestMetricsMiddleware_RecordsRouteAndStatus verifies LLD §11.2's
 // catalog_admin_requests_total{route,status} and
-// catalog_admin_request_duration_seconds{route,quantile} — recorded with
+// catalog_admin_request_duration_seconds{route} — recorded with
 // the matched route template, not the raw path, so a UUID path param
 // doesn't blow up label cardinality.
 func TestRequestMetricsMiddleware_RecordsRouteAndStatus(t *testing.T) {

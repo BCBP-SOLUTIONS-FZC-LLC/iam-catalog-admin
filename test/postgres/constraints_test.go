@@ -213,11 +213,11 @@ func TestDatabase_NoOutboxTable_NoRLSGUC(t *testing.T) {
 		`SELECT EXISTS(SELECT 1 FROM information_schema.tables
          WHERE table_schema='public' AND table_name='outbox_events')`).Scan(&exists)
 	require.NoError(t, err)
-	assert.False(t, exists, "catalog-admin must have no outbox_events table (LLD §10)")
+	assert.False(t, exists, "catalog-admin must have no outbox_events table (LLD §7)")
 
 	var guc string
 	err = rawPool.QueryRow(ctx,
 		"SELECT COALESCE(current_setting('app.tenant_id', true), '')").Scan(&guc)
 	require.NoError(t, err)
-	assert.Empty(t, guc, "catalog-admin never sets app.tenant_id GUC — no RLS (LLD §10)")
+	assert.Empty(t, guc, "catalog-admin never sets app.tenant_id GUC — no RLS (LLD §7)")
 }

@@ -422,7 +422,7 @@ func TestPatchDepartment_NoOutboxEventsEmitted(t *testing.T) {
 		`SELECT EXISTS(SELECT 1 FROM information_schema.tables
          WHERE table_schema='public' AND table_name='outbox_events')`).Scan(&exists)
 	require.NoError(t, err)
-	assert.False(t, exists, "outbox_events must not exist — no outbox runner in this service (LLD §10)")
+	assert.False(t, exists, "outbox_events must not exist — no outbox runner in this service (LLD §7)")
 }
 
 // Scenario CA2-CON-01: concurrent PATCHes with same version → one 200, one 409
@@ -474,7 +474,7 @@ func TestPatchDepartment_OCCResponse_IncludesVersionInfo(t *testing.T) {
 	body := decodeMap(t, raw)
 	assert.Equal(t, "optimistic_lock_conflict", body["code"])
 	// record_version is a top-level field (WithDetails merges flatly onto
-	// the response body, not nested under a "details" key — LLD §20).
+	// the response body, not nested under a "details" key — LLD §17).
 	assert.NotNil(t, body["record_version"], "409 OCC response must surface current record_version: %s", string(raw))
 }
 

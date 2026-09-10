@@ -145,7 +145,7 @@ func (h *DepartmentHandler) Patch(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	// CAT-2 (LLD §6): reject `code`/`is_system` in the body with
+	// CAT-2 (LLD §5.3): reject `code`/`is_system` in the body with
 	// 422 field_immutable — the DTO struct would silently drop them.
 	body, _ := io.ReadAll(c.Request.Body)
 	c.Request.Body = io.NopCloser(bytes.NewReader(body))
