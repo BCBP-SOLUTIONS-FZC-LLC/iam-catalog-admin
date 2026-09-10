@@ -1,0 +1,41 @@
+graph LR
+    main(["cmd/catalog-admin-config/main.go"])
+
+    http(["adapter/inbound/http"])
+    pg(["adapter/outbound/postgres"])
+    valkey(["adapter/outbound/valkey"])
+    metrics(["adapter/outbound/metrics\n(observability)"])
+
+    dept_svc(["core/service — DepartmentService"])
+    plan_svc(["core/service — PlanService"])
+
+    port(["core/port"])
+    domain(["core/domain"])
+    requestctx(["pkg/requestctx"])
+
+    main --> http
+    main --> pg
+    main --> valkey
+    main --> metrics
+    main --> dept_svc
+    main --> plan_svc
+
+    http --> dept_svc
+    http --> plan_svc
+    http --> port
+    http --> domain
+    http --> requestctx
+    http --> metrics
+
+    dept_svc --> port
+    dept_svc --> domain
+    plan_svc --> port
+    plan_svc --> domain
+
+    pg --> port
+    pg --> domain
+    pg --> metrics
+    valkey --> port
+    valkey --> metrics
+
+    port --> domain

@@ -82,17 +82,19 @@ go test ./test/e2e/... -tags=e2e -run TestDepartmentCreate -v
   `internal/adapter/outbound/postgres/*_test.go`, `internal/adapter/outbound/valkey/*_test.go`,
   `internal/adapter/outbound/metrics/*_test.go`, `internal/core/domain/*_test.go`,
   `internal/core/service/*_test.go`, `pkg/**/*_test.go`) — these reach package-private helpers
-  (`isDBUnavailableSQLState`, `requireOperator`, `withPool`, `envOr`, …) a black-box `test/unit`
+  (`isOperatorOrSystemErrorSQLState`, `requireOperator`, `withPool`, `envOr`, …) a black-box `test/unit`
   package can't reach.
 - `test/postgres/` — Postgres + constraints/trigger integration (testcontainers), `-tags=integration`.
-- `test/e2e/` — full-stack HTTP tests against real Postgres+Valkey, `-tags=e2e`.
+  Seed/assert SQL uses `test/dbseed` (`pgcommon.NewPool`/`WithConn`), not a raw `pgxpool`.
+- `test/e2e/` — full-stack HTTP tests against real Postgres+Valkey, `-tags=e2e`. Same `test/dbseed`
+  wrapper for direct-SQL assertions.
 
 **Coverage note:** `make test-ci` runs all three tiers with `-coverpkg=./internal/...,./pkg/...`
 into separate `.coverage/{unit,postgres,e2e}.out` profiles, then `scripts/merge_coverage.py` merges
 them (max-count strategy) into `coverage.out` — a Postgres-only file only shows real coverage once
 `test/postgres`'s profile is merged with `test/unit`'s. CI's coverage gate is **≥ 98%** (this
 service's own established baseline — a much smaller surface than `iam-user-profile`'s 95%, with no
-outbox/RLS/event machinery to leave deliberately uncovered). Currently at **99.6%**, verified via
+outbox/RLS/event machinery to leave deliberately uncovered). Currently at **100.0%**, verified via
 `make cover-func` — see CHANGELOG.md's `[Unreleased]` section for what's landed since the gate was
 set.
 
@@ -154,6 +156,7 @@ iam-catalog-admin/
 │           │   ├── plan_repository.go
 │           │   ├── db.go              # DSNFromEnv, ApplyStatementTimeout, MigrationDSNFromEnv, withPool, wrapConnErr
 │           │   ├── logger.go          # NewDomainLogger — bridges pgcommon's slow-query logger
+│           │   ├── otel_tracer.go     # NewOTelTracer — pgcommon.Config.Tracer via gincommon's provider
 │           │   ├── migrate.go         # RunMigrations (embed.FS, bypasses PgBouncer)
 │           │   └── migrations/        # 000001_init_schema (single consolidated migration; pre-prod)
 │           ├── valkey/                # cache impl (go-redis/v9)
@@ -170,7 +173,7 @@ iam-catalog-admin/
 │   │   ├── README.md                  # index of mermaid diagrams
 │   │   └── mermaid/                   # layer-model.mmd, write-flow.mmd, cache-strategy.mmd
 │   └── lld/
-│       └── iam-lld-catalog-admin-config-service.md  # the authoritative LLD (currently v1.27)
+│       └── iam-lld-catalog-admin-config-service.md  # the authoritative LLD (currently v1.35)
 ├── scripts/                           # local dev + build tooling only
 │   ├── merge_coverage.py              # merges per-suite coverage profiles for the CI gate
 │   └── patch-swagger-extensions.py    # post-processes docs/swagger during `make swag`
@@ -184,6 +187,7 @@ iam-catalog-admin/
 │   ├── unit/                          # fast unit tests (mocks, no Docker)
 │   ├── postgres/                      # constraints/trigger integration (testcontainers)
 │   ├── e2e/                           # full-stack HTTP tests
+│   ├── dbseed/                        # pgcommon-backed Exec/QueryRow for seed/assert SQL
 │   └── fixtures/                      # shared test helpers
 ├── Dockerfile  docker-compose.yml  Makefile  go.mod  .go-arch-lint.yml
 ├── ARCHITECTURE.md                    # detailed architecture documentation
@@ -197,14 +201,16 @@ iam-catalog-admin/
 ```go
 require (
     github.com/BCBP-SOLUTIONS-FZC-LLC/platform-gincommon v1.3.0
-    github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon   v1.2.1
+    github.com/BCBP-SOLUTIONS-FZC-LLC/platform-pgcommon   v1.3.0
 )
 ```
 
 - `platform-gincommon` — HTTP middleware, logging, tracing (OTel OTLP), `ObservabilityMiddlewares`,
-  `ProtectedMiddlewares`, `HealthHandler`.
+  `ProtectedMiddlewares`, `HealthHandler`, `InitTracingFromEnv`, `MetricsRegisterer`.
 - `platform-pgcommon` — PostgreSQL pool (`pgx/v5`) via `pgcommon.ConfigFromEnv()`, migrations
-  (`pkg/migrate.Runner`), `RunInTx`, `IsUniqueViolation`/`IsCheckViolation`/`ConstraintName` helpers.
+  (`pkg/migrate.Runner`), `RunInTx`, `IsUniqueViolation`/`IsCheckViolation`/`ConstraintName`/
+  `IsConnectionException`/`IsInsufficientResources`/`IsPgError` helpers,
+  `pgmetrics.InitWithRegisterer`, `Config.Tracer` via `NewOTelTracer`.
 
 **Not a dependency:** `platform-events` (no outbox/SNS/SQS — LLD §10, CAT-EVT-1/2), any AWS SDK
 package (no S3/SNS/SQS/Glue — LLD §10.5), `iam-keycloakclient`.
@@ -236,9 +242,11 @@ dependency, which is how Clean Architecture is *supposed* to work there — impo
   60s rather than silently discarding the error (fixed — see CHANGELOG `[Unreleased]`). Metrics
   served on a **separate port** (`METRICS_PORT`, default 9090) from the API port (`APP_PORT`,
   default 8081) so NetworkPolicy can grant scrape access without also granting API access.
-  Shutdown order: HTTP `Shutdown` → metrics server `Shutdown` → `cancelBackground` →
-  `shutdownTracing` → `gincommon.Shutdown` — no outbox/SQS-consumer drain step (this service has
-  neither).
+  Observability matches `iam-org-membership`/`iam-realm-provisioner`: `gincommon.InitTracingFromEnv()`
+  always, `ObservabilityMiddlewares` primed before `catmetrics.Register` /
+  `pgmetrics.InitWithRegisterer`, `pgCfg.Tracer = NewOTelTracer`. Shutdown order: HTTP `Shutdown` →
+  metrics server `Shutdown` → `cancelBackground` → `shutdownTracing` → `gincommon.Shutdown` — no
+  outbox/SQS-consumer drain step (this service has neither).
 - **`internal/adapter/inbound/http/router.go`** — single source of truth for every route,
   method, and middleware (`NewRouter`); both `main.go` and `test/e2e`'s harness call this same
   function, so route drift between them is structurally impossible. Disables
@@ -280,27 +288,35 @@ dependency, which is how Clean Architecture is *supposed* to work there — impo
   identity parsing — no RLS GUC to bridge, unlike `iam-org-membership`'s `GUCBridgeMiddleware`);
   `RequireOperatorRole`/`RequireSystemRole` (route-group gates, each re-checked in-handler too via
   `requireOperator`/`requireSystem` — defense-in-depth); `HandleError`/`domainErrorStatus` (maps
-  `DomainError.Code` → HTTP status); `isDBUnavailableSQLState` (SQLSTATE class `08`/`53`/`57`/`58`
-  → `503 db_unavailable`); `NormalizeAuthErrors` (rewrites `platform-gincommon`'s bare 401s to
+  `DomainError.Code` → HTTP status); leaked PgError 503 fallback via
+  `pgcommon.IsConnectionException`/`IsInsufficientResources`/`isOperatorOrSystemErrorSQLState`
+  (SQLSTATE class `08`/`53`/`57`/`58` → `503 db_unavailable`, no `pgconn` import);
+  `NormalizeAuthErrors` (rewrites `platform-gincommon`'s bare 401s to
   include this service's `code` field).
 - **`internal/adapter/inbound/http/errors.go`** — `newErrorResponse` populates `trace_id`/
   `request_id` via `gincommon.TraceIDFromContext(c)`/`RequestIDFromContext(c)` (with a header
   fallback for the latter) — the same source `HandleError` above uses for its structured log line.
   Previously read `trace_id` via the raw `go.opentelemetry.io/otel/trace` API directly instead of
-  the `gincommon` helper (fixed — see CHANGELOG `[Unreleased]`); no code in this repo imports the
-  OTel SDK directly anymore (`otel/sdk`/`otel/trace` are `// indirect` in `go.mod`, pulled in
-  transitively by `platform-gincommon` only).
+  the `gincommon` helper (fixed — see CHANGELOG `[Unreleased]`); response `trace_id` still comes
+  only through gincommon. The one remaining direct OTel import is
+  `internal/adapter/outbound/postgres/otel_tracer.go` (`NewOTelTracer`), which adapts gincommon's
+  global TracerProvider onto `pgcommon.Config.Tracer` — the same adapter
+  `iam-org-membership`/`iam-realm-provisioner` ship.
 - **`internal/adapter/outbound/postgres/db.go`** — `withPool` wraps every repository call in its
   own single-statement transaction via `pgcommon.RunInTx` — there is **no** higher-level
   `TxRunner`/event-injection seam here (unlike `iam-user-profile`), because every write in this
-  service is single-row, single-table (CAT-FAIL-3). `wrapConnErr` converts non-protocol DB errors
-  into `ErrDependencyUnavailable`, passing `DomainError`/`pgconn.PgError`/`pgx.ErrNoRows`/context
-  cancellations through unchanged. `DSNFromEnv` is `main.go`'s single call site for resolving the
-  app DSN — it skips `ApplyStatementTimeout`'s append when `DATABASE_URL` is set, since
-  `pgcommon.ConfigFromEnv` returns that value verbatim and it may have no `?` query string to
-  safely append onto (fixed — a real bug where the append was previously unconditional; see
-  CHANGELOG `[Unreleased]`), matching the identically-named helper in `iam-org-membership`/
-  `iam-user-profile`.
+  service is single-row, single-table (CAT-FAIL-3). `wrapConnErr` remaps SQLSTATE class
+  `08`/`53`/`57`/`58` to `ErrDBUnavailable` via `pgcommon.IsConnectionException`/
+  `IsInsufficientResources`/`IsPgError` (plus `isOperatorOrSystemErrorSQLState` for 57/58);
+  other PgErrors, `DomainError`, `pgx.ErrNoRows`, and context cancellations pass through.
+  Generic transport errors become `ErrDependencyUnavailable`. `DSNFromEnv` is `main.go`'s
+  single call site for resolving the app DSN — it skips `ApplyStatementTimeout`'s append when
+  `DATABASE_URL` is set, since `pgcommon.ConfigFromEnv` returns that value verbatim and it may
+  have no `?` query string to safely append onto (fixed — a real bug where the append was
+  previously unconditional; see CHANGELOG `[Unreleased]`), matching the identically-named
+  helper in `iam-org-membership`/`iam-realm-provisioner`. `MigrationDSNFromEnv()` takes no
+  `appDSN` argument: timeout is applied to `MIGRATION_DATABASE_URL` itself, otherwise it
+  falls back to `DSNFromEnv()`.
 - **`internal/adapter/outbound/postgres/migrate.go`** — `RunMigrations` uses the **direct**
   (non-PgBouncer) DSN via `MigrationDSNFromEnv`, because `pg_advisory_lock` is session-scoped and
   breaks under transaction pooling.
@@ -316,9 +332,9 @@ dependency, which is how Clean Architecture is *supposed* to work there — impo
   composition-root call path.
 - **`pkg/requestctx/context.go`** — `RequestContext{UserID, TenantID, Roles, ClientIP, UserAgent}`,
   `HasRole`, `IsOperator()` (`platform_operator` role), `IsSystem()` (`iam-system` role).
-- **`docs/lld/iam-lld-catalog-admin-config-service.md`** — the authoritative LLD (currently v1.27).
+- **`docs/lld/iam-lld-catalog-admin-config-service.md`** — the authoritative LLD (currently v1.35).
   Read this before making any contract-level change; it carries a decision register (CAT-D1
-  through CAT-D12, §14) and a full error taxonomy (§20) that must stay in sync with the code.
+  through CAT-D13, §16) and a full error taxonomy (§17) that must stay in sync with the code.
 
 ## See Also
 

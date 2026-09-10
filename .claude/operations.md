@@ -63,9 +63,12 @@ All `catalog_admin_*` collectors are registered onto `gincommon.MetricsRegistere
   outcome, recorded by `requestMetricsMiddleware` (`router.go`) scoped to the `/api/v1` group.
   `route` is `c.FullPath()` (the matched route template), never a raw path, so cardinality stays
   bounded regardless of how many UUIDs are requested.
-- `catalog_admin_request_duration_seconds{route}` — a **Summary** (quantiles `0.5`/`0.9`/`0.99`),
-  not a Histogram, because the LLD names the label `quantile` specifically. Feeds the SLOs above
-  directly.
+- `catalog_admin_request_duration_seconds{route}` — a **Histogram** (buckets at 5/10/15/20/30/40/
+  50/75/100/250/500/1000/2500ms, landing exactly on the LLD's own SLO thresholds), not a Summary
+  (reversed from the original design — CAT-D13, LLD §16): a Summary's client-side quantiles can't
+  answer "what fraction of requests were under 40ms" or be aggregated across routes/pods, which
+  `deploy/monitoring/slo-rules.yml`'s multi-window burn-rate alerts need. Feeds the SLOs above and
+  that file directly.
 - `catalog_admin_writes_total{table, op}` — `departments`/`plans` inserts and updates. **Known
   quirk:** both the repository method and the handler increment this counter on the same
   successful write (see [flows-and-concurrency.md](flows-and-concurrency.md)), so its absolute
@@ -83,6 +86,8 @@ All `catalog_admin_*` collectors are registered onto `gincommon.MetricsRegistere
 - Generic HTTP metrics from `gincommon.ObservabilityMiddlewares` (`http_requests_total`,
   `http_request_duration_seconds`) — shared shape across the whole IAM fleet, distinct from (and
   in addition to) the `catalog_admin_*` metrics above.
+- `pgcommon_*` pool/query/retry instruments from `pgmetrics.InitWithRegisterer` — same
+  `gincommon.MetricsRegisterer()` as HTTP and `catalog_admin_*` collectors.
 
 **Not emitted by this service, but relevant to full observability:** `om:departments`/`om:plans`/
 `gm:departments` cache-miss rate and stale-if-error activation count are Core's and Group Mapping
@@ -94,10 +99,13 @@ scrape access without also granting API access.
 
 ## Tracing and logging
 
-OTel Go SDK, W3C Trace Context (`gincommon.InitTracingFromEnv()`, opt-in via
-`OTEL_EXPORTER_OTLP_ENDPOINT`). A typical trace: `inbound.http → core.service.<use_case> →
-outbound.postgres → outbound.valkey (cat:* read/DEL)` — no `outbound.*` call to any other IAM
-service (this is a pure leaf). Structured JSON logs carry `trace_id`, `request_id`, `tenant_id`
+OTel Go SDK, W3C Trace Context (`gincommon.InitTracingFromEnv()`, always installed —
+in-process spans get valid trace IDs even without a collector; OTLP export is a no-op until
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set). `pgcommon.Config.Tracer` (`pgadapter.NewOTelTracer`)
+adds a `db.query` span per query on the same TracerProvider. A typical trace:
+`inbound.http → core.service.<use_case> → outbound.postgres → outbound.valkey (cat:* read/DEL)` —
+no `outbound.*` call to any other IAM service (this is a pure leaf). Structured JSON logs carry
+`trace_id`, `request_id`, `tenant_id`
 (logged on **every** request line, not just writes — the header is required but its parsed value
 is never used again, CAT-D12/LLD §13.3), and the `platform_operator` principal's `sub` for every
 CAT-1/CAT-2/CAT-5 write.
@@ -159,7 +167,7 @@ growth is a manual "add replicas" decision, not an automated scale target.
 | `PG_SLOW_QUERY_THRESHOLD` | `200ms` | Slow-query log threshold |
 | `VALKEY_URL` | `localhost:6381` (local) | Redis connection string; **must** use `rediss://` in production/staging (checked at startup) |
 | `OTEL_SERVICE_NAME` | — | Service name for OTel |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | If unset, tracing is not initialized at all (fully opt-in) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP collector — provider always installed; export no-op until set |
 
 No outbox/SNS/SQS/S3/Glue vars exist — this service has no events (LLD §10). No RLS/GUC vars
 exist — no tenant context (LLD §9).

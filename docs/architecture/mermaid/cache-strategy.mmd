@@ -7,7 +7,7 @@ flowchart TD
     D -- yes --> F["log error"]
     F --> G["return dependency_unavailable\n(CAT-FAIL-1: cache is advisory,\nPostgres is the source of truth)"]
 
-    subgraph consumer["Consumer side (e.g. iam-org-membership) — LLD §8"]
+    subgraph consumer["Consumer side (e.g. iam-org-membership) — LLD §6"]
         H["CatalogReader.Departments/Plans"] --> I{"om:departments\n/ om:plans hit?\n(600s TTL)"}
         I -- yes --> J["return cached catalog"]
         I -- no --> K["call CAT-I1/CAT-I2"]
