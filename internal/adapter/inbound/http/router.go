@@ -257,6 +257,8 @@ func requestMetricsMiddleware() gin.HandlerFunc {
 		status := strconv.Itoa(c.Writer.Status())
 		catmetrics.RequestsTotal.WithLabelValues(route, status).Inc()
 		catmetrics.RequestDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
+		catmetrics.DeprecatedRequestsTotal.WithLabelValues(route, status).Inc()
+		catmetrics.DeprecatedRequestDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
 	}
 }
 

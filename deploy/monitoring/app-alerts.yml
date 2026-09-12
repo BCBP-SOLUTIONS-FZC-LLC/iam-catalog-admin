@@ -70,13 +70,13 @@ groups:
       # LLD §11.5: "CAT-I1/CAT-I2 error rate > 10% over 5 minutes" (SEV-2) —
       # distinct from the two all-route alerts above, which don't isolate
       # the internal/bulk-read routes Core and Group Mapping depend on for
-      # cache population. Uses catalog_admin_requests_total (§11.2's own
+      # cache population. Uses iam_catalog_admin_requests_total (§11.2's own
       # route+exact-status metric), not the generic http_requests_total.
       - alert: IAMCatalogAdminInternalErrorRate
         expr: |
-          sum(rate(catalog_admin_requests_total{job="iam-catalog-admin", route=~"/api/v1/internal/.*", status=~"5.."}[5m]))
+          sum(rate(iam_catalog_admin_requests_total{job="iam-catalog-admin", route=~"/api/v1/internal/.*", status=~"5.."}[5m]))
             /
-          sum(rate(catalog_admin_requests_total{job="iam-catalog-admin", route=~"/api/v1/internal/.*"}[5m]))
+          sum(rate(iam_catalog_admin_requests_total{job="iam-catalog-admin", route=~"/api/v1/internal/.*"}[5m]))
           > 0.10
         for: 5m
         labels:
@@ -130,7 +130,7 @@ groups:
       # or tooling bug, not expected in steady state.
       - alert: IAMCatalogAdminOptimisticLockConflicts
         expr: |
-          sum(rate(catalog_admin_optimistic_lock_conflicts_total{job="iam-catalog-admin"}[5m])) by (table) > 0
+          sum(rate(iam_catalog_admin_optimistic_lock_conflicts_total{job="iam-catalog-admin"}[5m])) by (table) > 0
         for: 15m
         labels:
           severity: warning

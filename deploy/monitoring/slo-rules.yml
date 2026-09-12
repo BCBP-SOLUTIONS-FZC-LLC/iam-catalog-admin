@@ -2,7 +2,7 @@
 #
 # Mirrors iam-org-membership's deploy/monitoring/slo-rules.yml pattern
 # (multi-window multi-burn-rate, SRE book Ch. 5), adapted to this service's
-# own §11.1 SLO table and its own catalog_admin_request_duration_seconds
+# own §11.1 SLO table and its own iam_catalog_admin_request_duration_seconds
 # Histogram (CAT-D13, §16 — converted from a Summary specifically so these
 # per-request good/bad-event ratios could be computed at all; a Summary's
 # client-side quantiles cannot answer "what fraction of requests were under
@@ -45,26 +45,26 @@ groups:
       # SLO-1: public department reads (CAT-6/CAT-7), 40ms threshold.
       - record: catalog_admin:slo1_public_read_latency_sli:ratio_rate_5m
         expr: |
-          sum(rate(catalog_admin_request_duration_seconds_bucket{
+          sum(rate(iam_catalog_admin_request_duration_seconds_bucket{
             job="iam-catalog-admin",
             route=~"/api/v1/departments.*",
             le="0.04"
           }[5m]))
           /
-          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+          clamp_min(sum(rate(iam_catalog_admin_request_duration_seconds_count{
             job="iam-catalog-admin",
             route=~"/api/v1/departments.*"
           }[5m])), 0.001)
 
       - record: catalog_admin:slo1_public_read_latency_sli:ratio_rate_1h
         expr: |
-          sum(rate(catalog_admin_request_duration_seconds_bucket{
+          sum(rate(iam_catalog_admin_request_duration_seconds_bucket{
             job="iam-catalog-admin",
             route=~"/api/v1/departments.*",
             le="0.04"
           }[1h]))
           /
-          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+          clamp_min(sum(rate(iam_catalog_admin_request_duration_seconds_count{
             job="iam-catalog-admin",
             route=~"/api/v1/departments.*"
           }[1h])), 0.001)
@@ -72,26 +72,26 @@ groups:
       # SLO-2: internal bulk reads (CAT-I1/CAT-I2), 30ms threshold.
       - record: catalog_admin:slo2_internal_latency_sli:ratio_rate_5m
         expr: |
-          sum(rate(catalog_admin_request_duration_seconds_bucket{
+          sum(rate(iam_catalog_admin_request_duration_seconds_bucket{
             job="iam-catalog-admin",
             route=~"/api/v1/internal/.*",
             le="0.03"
           }[5m]))
           /
-          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+          clamp_min(sum(rate(iam_catalog_admin_request_duration_seconds_count{
             job="iam-catalog-admin",
             route=~"/api/v1/internal/.*"
           }[5m])), 0.001)
 
       - record: catalog_admin:slo2_internal_latency_sli:ratio_rate_1h
         expr: |
-          sum(rate(catalog_admin_request_duration_seconds_bucket{
+          sum(rate(iam_catalog_admin_request_duration_seconds_bucket{
             job="iam-catalog-admin",
             route=~"/api/v1/internal/.*",
             le="0.03"
           }[1h]))
           /
-          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+          clamp_min(sum(rate(iam_catalog_admin_request_duration_seconds_count{
             job="iam-catalog-admin",
             route=~"/api/v1/internal/.*"
           }[1h])), 0.001)
@@ -99,26 +99,26 @@ groups:
       # SLO-3: operator routes (CAT-1/CAT-2/CAT-4/CAT-5), 100ms threshold.
       - record: catalog_admin:slo3_operator_latency_sli:ratio_rate_5m
         expr: |
-          sum(rate(catalog_admin_request_duration_seconds_bucket{
+          sum(rate(iam_catalog_admin_request_duration_seconds_bucket{
             job="iam-catalog-admin",
             route=~"/api/v1/operator/.*",
             le="0.1"
           }[5m]))
           /
-          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+          clamp_min(sum(rate(iam_catalog_admin_request_duration_seconds_count{
             job="iam-catalog-admin",
             route=~"/api/v1/operator/.*"
           }[5m])), 0.001)
 
       - record: catalog_admin:slo3_operator_latency_sli:ratio_rate_1h
         expr: |
-          sum(rate(catalog_admin_request_duration_seconds_bucket{
+          sum(rate(iam_catalog_admin_request_duration_seconds_bucket{
             job="iam-catalog-admin",
             route=~"/api/v1/operator/.*",
             le="0.1"
           }[1h]))
           /
-          clamp_min(sum(rate(catalog_admin_request_duration_seconds_count{
+          clamp_min(sum(rate(iam_catalog_admin_request_duration_seconds_count{
             job="iam-catalog-admin",
             route=~"/api/v1/operator/.*"
           }[1h])), 0.001)

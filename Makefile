@@ -58,7 +58,8 @@ help:
 	@echo "  make build           - compile the binary to bin/"
 	@echo "  make cover           - merged coverage HTML report across unit+postgres+e2e (requires Docker)"
 	@echo "  make cover-func      - merged coverage summary by function across unit+postgres+e2e (requires Docker)"
-	@echo "  make ci              - tidy + fmt-check + vet + lint + test-ci + build"
+	@echo "  make validate-metrics - validate metric names/suffixes against the observability standard"
+	@echo "  make ci              - tidy + fmt-check + vet + lint + validate-metrics + test-ci + build"
 	@echo "  make swag            - regenerate docs/swagger/ from handler annotations (mirrors sibling iam-user-profile2)"
 	@echo "  make swag-check      - fail if Swagger regeneration would change docs/swagger/ (CI drift gate)"
 	@echo "  make docker-up       - start local Postgres + Valkey"
@@ -248,8 +249,12 @@ swag-check:
 # CI
 # -----------------------------
 
+.PHONY: validate-metrics
+validate-metrics:
+	python3 scripts/validate_metrics.py
+
 .PHONY: ci
-ci: tidy fmt-check vet lint test-ci build
+ci: tidy fmt-check vet lint validate-metrics test-ci build
 
 # -----------------------------
 # COVERAGE

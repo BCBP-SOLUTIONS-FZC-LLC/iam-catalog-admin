@@ -71,6 +71,7 @@ func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			metrics.CacheMisses.WithLabelValues(key).Inc()
+			metrics.DeprecatedCacheMisses.WithLabelValues(key).Inc()
 			return nil, nil
 		}
 		// A real outage/timeout, not a miss — left out of the hit-ratio
@@ -78,6 +79,7 @@ func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, err
 	}
 	metrics.CacheHits.WithLabelValues(key).Inc()
+	metrics.DeprecatedCacheHits.WithLabelValues(key).Inc()
 	return val, nil
 }
 

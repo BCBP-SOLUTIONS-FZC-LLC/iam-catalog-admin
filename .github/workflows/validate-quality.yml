@@ -99,6 +99,16 @@ jobs:
             exit 1
           fi
 
+      # Enforce the Enterprise Platform Observability Standard — namespace
+      # classification, counter/histogram suffix rules, high-cardinality label
+      # prohibition, and deprecated-metric documentation requirements.
+      - name: Metrics naming compliance
+        run: |
+          if ! python3 scripts/validate_metrics.py; then
+            echo "::error file=internal/adapter/outbound/metrics/metrics.go,title=Metrics standard violation::One or more metrics violate the Enterprise Platform Observability Standard. Run 'make validate-metrics' locally to view details."
+            exit 1
+          fi
+
       # Enforce digest-pinned FROM lines in the Dockerfile. Floating tags (e.g.
       # golang:1.26.5-alpine without @sha256:...) can be silently overwritten by
       # upstream maintainers, breaking supply-chain guarantees.

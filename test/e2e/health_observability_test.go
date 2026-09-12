@@ -20,13 +20,18 @@ func TestReadyz_ValkeyDown_Returns503(t *testing.T) {
 	t.Skip("infrastructure test — requires Valkey container to be stopped before running")
 }
 
-// Scenario CAH-H-05: GET /metrics → 200 with catalog_admin_* metric families
+// Scenario CAH-H-05: GET /metrics → 200 with iam_catalog_admin_* metric families
+// (Tier 3 names under the Enterprise Platform Observability Standard). The
+// deprecated catalog_admin_* parallel series are also present during the
+// backward-compat sunset period.
 func TestMetrics_CatAdminCountersPresent(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodGet, "/api/v1/departments", publicHeaders, nil) //nolint:errcheck
 
-	assert.Contains(t, fetchMetrics(t, env), "catalog_admin_")
+	body := fetchMetrics(t, env)
+	assert.Contains(t, body, "iam_catalog_admin_")
+	assert.Contains(t, body, "catalog_admin_") // deprecated parallel emission
 }
 
 // Scenario CAH-H-06: GET /healthz requires no identity headers
@@ -86,17 +91,19 @@ func TestBusinessLogic_PostgresDown_Returns503(t *testing.T) {
 	assert.Equal(t, "dependency_unavailable", decodeMap(t, raw)["code"])
 }
 
-// Scenario CA-OBS-01: catalog_admin_writes_total increments after dept create
+// Scenario CA-OBS-01: iam_catalog_admin_writes_total increments after dept create
 func TestObservability_DeptCreate_WritesMetricIncrements(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPost, "/api/v1/operator/departments", operatorHeaders,
 		map[string]any{"code": "obs_dept01", "name": "Writes Metric"}) //nolint:errcheck
 
-	assert.Contains(t, fetchMetrics(t, env), "catalog_admin_writes_total")
+	body := fetchMetrics(t, env)
+	assert.Contains(t, body, "iam_catalog_admin_writes_total")
+	assert.Contains(t, body, "catalog_admin_writes_total") // deprecated parallel emission
 }
 
-// Scenario CA-OBS-02: catalog_admin_writes_total increments after dept patch
+// Scenario CA-OBS-02: iam_catalog_admin_writes_total increments after dept patch
 func TestObservability_DeptPatch_WriteUpdateMetricIncrements(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
@@ -106,20 +113,26 @@ func TestObservability_DeptPatch_WriteUpdateMetricIncrements(t *testing.T) {
 	doJSON(t, env, http.MethodPatch, "/api/v1/operator/departments/"+id, operatorHeaders,
 		map[string]any{"name": "Updated Metric", "record_version": 1}) //nolint:errcheck
 
-	assert.Contains(t, fetchMetrics(t, env), "catalog_admin_writes_total")
+	body := fetchMetrics(t, env)
+	assert.Contains(t, body, "iam_catalog_admin_writes_total")
+	assert.Contains(t, body, "catalog_admin_writes_total") // deprecated parallel emission
 }
 
-// Scenario CA-OBS-03: catalog_admin_writes_total increments after plan patch
+// Scenario CA-OBS-03: iam_catalog_admin_writes_total increments after plan patch
 func TestObservability_PlanPatch_WritesMetricIncrements(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	doJSON(t, env, http.MethodPatch, "/api/v1/operator/plans/pro", operatorHeaders,
 		map[string]any{"display_name": "Obs Plan", "record_version": 1}) //nolint:errcheck
 
-	assert.Contains(t, fetchMetrics(t, env), "catalog_admin_writes_total")
+	body := fetchMetrics(t, env)
+	assert.Contains(t, body, "iam_catalog_admin_writes_total")
+	assert.Contains(t, body, "catalog_admin_writes_total") // deprecated parallel emission
 }
 
-// Scenario CA-OBS-05 / CROSS-CA-09/10: cache counters and OCC counters present in /metrics
+// Scenario CA-OBS-05 / CROSS-CA-09/10: cache counters and OCC counters present in /metrics.
+// Asserts both iam_catalog_admin_* (Tier 3 primary) and deprecated catalog_admin_* names
+// during the backward-compat sunset period.
 func TestObservability_AllExpectedCountersPresent(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
@@ -136,11 +149,16 @@ func TestObservability_AllExpectedCountersPresent(t *testing.T) {
 		map[string]any{"name": "X", "record_version": 99}) //nolint:errcheck (stale version → OCC)
 
 	body := fetchMetrics(t, env)
+	// Primary Tier 3 metrics (iam_catalog_admin_*).
+	assert.Contains(t, body, "iam_catalog_admin_cache_hits_total")
+	assert.Contains(t, body, "iam_catalog_admin_cache_misses_total")
+	assert.Contains(t, body, "iam_catalog_admin_writes_total")
+	assert.Contains(t, body, "iam_catalog_admin_optimistic_lock_conflicts_total")
+	// Deprecated parallel emissions — present during the backward-compat sunset period.
 	assert.Contains(t, body, "catalog_admin_cache_hits_total")
 	assert.Contains(t, body, "catalog_admin_cache_misses_total")
 	assert.Contains(t, body, "catalog_admin_writes_total")
 	assert.Contains(t, body, "catalog_admin_optimistic_lock_conflicts_total")
-	// Generic HTTP metrics from gincommon.ObservabilityMiddlewares — same
-	// scrape as catalog_admin_* (dedicated METRICS_PORT listener).
+	// Generic HTTP metrics from gincommon.ObservabilityMiddlewares.
 	assert.Contains(t, body, "http_requests_total")
 }

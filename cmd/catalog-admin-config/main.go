@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	_ "github.com/BCBP-SOLUTIONS-FZC-LLC/iam-catalog-admin/docs/swagger"
@@ -75,7 +76,15 @@ func main() {
 	// slice to the Gin engine; gincommon's metrics.Init is sync.Once.
 	_ = gincommon.ObservabilityMiddlewares(cfg)
 
-	catmetrics.Register(gincommon.MetricsRegisterer(), gincommon.MetricsConstLabels())
+	// Merge environment into constLabels alongside gincommon's {service, version}
+	// so all iam_catalog_admin_* metrics carry the required labels mandated by the
+	// Enterprise Platform Observability Standard (Tier 3: service, environment).
+	constLabels := make(prometheus.Labels, len(gincommon.MetricsConstLabels())+1)
+	for k, v := range gincommon.MetricsConstLabels() {
+		constLabels[k] = v
+	}
+	constLabels["environment"] = appEnv
+	catmetrics.Register(gincommon.MetricsRegisterer(), constLabels)
 	pgmetrics.InitWithRegisterer(cfg.ServiceName, cfg.BuildVersion, gincommon.MetricsRegisterer())
 
 	// ── 3. Database ───────────────────────────────────────────────────────

@@ -108,6 +108,7 @@ func (r *DepartmentRepository) Insert(ctx context.Context, d *domain.Department)
 		}
 		out = created
 		catmetrics.WritesTotal.WithLabelValues("departments", "insert").Inc()
+		catmetrics.DeprecatedWritesTotal.WithLabelValues("departments", "insert").Inc()
 		return nil
 	})
 	return out, err
@@ -139,11 +140,13 @@ func (r *DepartmentRepository) Update(ctx context.Context, id uuid.UUID, name *s
 		if err != nil {
 			if errors.Is(err, domain.ErrOptimisticLockConflict) {
 				catmetrics.OptimisticLockConflicts.WithLabelValues("departments").Inc()
+				catmetrics.DeprecatedOptimisticLockConflicts.WithLabelValues("departments").Inc()
 			}
 			return err
 		}
 		out = updated
 		catmetrics.WritesTotal.WithLabelValues("departments", "update").Inc()
+		catmetrics.DeprecatedWritesTotal.WithLabelValues("departments", "update").Inc()
 		return nil
 	})
 	return out, err

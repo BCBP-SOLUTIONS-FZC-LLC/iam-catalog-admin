@@ -139,11 +139,13 @@ func (r *PlanRepository) Update(ctx context.Context, code domain.TenantPlan, pat
 		if err != nil {
 			if errors.Is(err, domain.ErrOptimisticLockConflict) {
 				catmetrics.OptimisticLockConflicts.WithLabelValues("plans").Inc()
+				catmetrics.DeprecatedOptimisticLockConflicts.WithLabelValues("plans").Inc()
 			}
 			return err
 		}
 		out = p
 		catmetrics.WritesTotal.WithLabelValues("plans", "update").Inc()
+		catmetrics.DeprecatedWritesTotal.WithLabelValues("plans", "update").Inc()
 		return nil
 	})
 	return out, err
